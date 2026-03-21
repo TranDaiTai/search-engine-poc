@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexer-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: indexer-service
+  template:
+    metadata:
+      labels:
+        app: indexer-service
+    spec:
+      containers:
+      - name: indexer-service
+        image: your-docker-hub/indexer-service:latest # Needs to be built and pushed
+        env:
+        - name: ELASTICSEARCH_URL
+          value: "http://elasticsearch:9200"
+        - name: RABBITMQ_URL
+          value: "amqp://user:password@rabbitmq:5672"

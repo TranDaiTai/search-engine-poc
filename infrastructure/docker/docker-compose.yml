@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # Search Engine
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: es-demo
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    networks:
+      - shop-network
+
+  # Database (Source of Truth)
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-demo
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=orders_db
+    ports:
+      - "5432:5432"
+    networks:
+      - shop-network
+
+  # Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq-demo
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=password
+    networks:
+      - shop-network
+
+  # Stock Reservation (High Performance)
+  redis:
+    image: redis:7-alpine
+    container_name: redis-demo
+    ports:
+      - "6379:6379"
+    networks:
+      - shop-network
+
+  # Load Balancer
+  nginx:
+    image: nginx:1.25
+    container_name: nginx-demo
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - search-service
+      - order-service
+    networks:
+      - shop-network
+
+  # Search API (Person A)
+  search-service:
+    build: ../../services/search-service
+    container_name: search-service-demo
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - shop-network
+
+  # Order Service (Person B)
+  order-service:
+    build: ../../services/order-service
+    container_name: order-service-demo
+    environment:
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+      - DB_URL=postgres://user:password@postgres:5432/orders_db
+    depends_on:
+      - rabbitmq
+      - redis
+      - postgres
+    networks:
+      - shop-network
+
+  # Indexer Worker (Person B)
+  indexer-service:
+    build: ../../services/indexer-service
+    container_name: indexer-service-demo
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
+      - POSTGRES_URL=postgres://user:password@postgres:5432/orders_db
+    depends_on:
+      - elasticsearch
+      - rabbitmq
+      - postgres
+    networks:
+      - shop-network
+
+networks:
+  shop-network:
+    driver: bridge

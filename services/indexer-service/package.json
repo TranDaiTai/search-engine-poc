@@ -1,0 +1,13 @@
+{
+  "name": "indexer-service",
+  "version": "1.0.0",
+  "description": "Worker to consume RabbitMQ and index to Elasticsearch",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "@elastic/elasticsearch": "^7.17.0"
+  }
+}
