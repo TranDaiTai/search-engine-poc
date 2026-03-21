@@ -1,0 +1,28 @@
+Xử lý tranh chấp đồng thời (Concurrency Control) là "bài toán triệu đô" trong thương mại điện tử, đặc biệt là khi hàng ngàn người cùng tranh mua 1 món hàng cuối cùng trong đợt Flash Sale.
+
+Trong hệ thống của chúng ta, có 3 tầng cần xử lý tranh chấp:
+
+1. Tầng Cache (Redis) - Ngăn chặn "Bán quá số lượng" (Overselling)
+Đây là nơi đầu tiên tiếp nhận yêu cầu. Nếu 100 người cùng đọc số lượng tồn kho là 1, cả 100 người sẽ cùng tưởng là còn hàng.
+
+Giải pháp - Redis Atomic Operations: Không sử dụng luồng Read -> Check -> Write thông thường. Thay vào đó, ta dùng các lệnh Atomic của Redis như DECRBY.
+Giải pháp cao cấp - Lua Script: Chúng ta viết một đoạn mã nhỏ chạy trực tiếp bên trong Redis. Redis đảm bảo lệnh Lua script là "Single-threaded" (đơn luồng), nghĩa là tại một thời điểm chỉ có 1 người được chạy đoạn script đó.
+Logic: "Nếu tồn kho >= X thì trừ X và trả về OK, nếu không thì trả về Fail". Tất cả diễn ra trong 1 bước duy nhất không thể bị xen ngang.
+2. Tầng Database (PostgreSQL) - Tính toàn vẹn dữ liệu
+Khi dữ liệu được ghi xuống DB, ta có 2 chiến lược:
+
+Optimistic Locking (Khóa lạc quan): Thêm một cột version vào bảng sản phẩm.
+Lệnh Update sẽ là: UPDATE products SET stock = stock - 1, version = 2 WHERE id = 1 AND version = 1.
+Nếu trong lúc đó có ai khác đã cập nhật version lên 2, lệnh của bạn sẽ không tìm thấy dòng nào để cập nhật -> Hệ thống báo lỗi và yêu cầu thử lại (Retry).
+Pessimistic Locking (Khóa bi quan): Sử dụng SELECT ... FOR UPDATE.
+Khi bạn đọc dòng đó, Database sẽ "khóa" dòng đó lại, không cho ai khác đọc hay ghi cho đến khi bạn hoàn tất (Commit). Cách này cực kỳ an toàn nhưng sẽ làm hệ thống chậm lại nếu có quá nhiều người tranh chấp.
+3. Tầng Đồng bộ (Elasticsearch) - Xử lý sai thứ tự (Out-of-order)
+Vì chúng ta dùng RabbitMQ, đôi khi tin nhắn cập nhật sản phẩm lúc 10:00:01 lại đến sau tin nhắn lúc 10:00:02 (do mạng hoặc worker xử lý chậm).
+
+Giải pháp - External Versioning: Khi đẩy dữ liệu vào Elasticsearch, ta gửi kèm một trường updated_at (timestamp) từ Postgres làm version.
+Cơ chế: Elasticsearch chỉ chấp nhận cập nhật nếu version mới lớn hơn version hiện tại trong Index. Nếu tin nhắn cũ đến sau, Elasticsearch sẽ tự động bác bỏ nó.
+4. Tầng Ứng dụng - Đảm bảo tính nhất quán (Idempotency)
+Phòng trường hợp người dùng nhấn nút "Mua" 2 lần liên tiếp do mạng lag.
+
+Giải pháp - Idempotency Key: Mọi yêu cầu đặt hàng phải đi kèm một mã định danh duy nhất (ví dụ: request_id).
+Cơ chế: Trước khi xử lý, Order Service kiểm tra trong Redis xem request_id này đã được xử lý chưa. Nếu rồi thì trả về kết quả cũ thay vì tạo thêm đơn hàng mới.
