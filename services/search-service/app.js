@@ -16,17 +16,24 @@ app.get('/search', async (req, res) => {
         return res.status(400).json({ error: 'Query parameter "q" is required' });
     }
 
+    let queryBody = {};
+    if (q === '*') {
+        queryBody = { match_all: {} };
+    } else {
+        queryBody = {
+            multi_match: {
+                query: q,
+                fields: ['name^3', 'description'],
+                fuzziness: 'AUTO'
+            }
+        };
+    }
+
     try {
         const result = await esClient.search({
             index: 'products',
             body: {
-                query: {
-                    multi_match: {
-                        query: q,
-                        fields: ['name^3', 'description'],
-                        fuzziness: 'AUTO'
-                    }
-                }
+                query: queryBody
             }
         });
 
@@ -45,6 +52,8 @@ app.get('/search', async (req, res) => {
         res.status(500).json({ error: 'Search failed' });
     }
 });
+
+
 
 app.listen(port, () => {
     console.log(`Search service listening at http://localhost:${port}`);

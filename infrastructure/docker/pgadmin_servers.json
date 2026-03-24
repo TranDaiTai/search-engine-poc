@@ -1,0 +1,19 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "Ecommerce-Search-DB",
+            "Group": "Servers",
+            "Host": "postgres",
+            "Port": 5432,
+            "MaintenanceDB": "orders_db",
+            "Username": "user",
+            "UseSSHTunnel": 0,
+            "TunnelPort": "22",
+            "TunnelAuthentication": 0,
+            "SSHTunnelAuthentication": 0,
+            "SSLMode": "prefer",
+            "Service": "",
+            "PassFile": ""
+        }
+    }
+}

@@ -13,6 +13,18 @@ services:
     networks:
       - shop-network
 
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.10
+    container_name: kibana-demo
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - shop-network
+
   # Database (Source of Truth)
   postgres:
     image: postgres:15-alpine
@@ -23,6 +35,24 @@ services:
       - POSTGRES_DB=orders_db
     ports:
       - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - shop-network
+
+  # Thêm pgAdmin (Web-based Database Manager)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin-demo
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    volumes:
+      - ./pgadmin_servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      - postgres
     networks:
       - shop-network
 
@@ -59,6 +89,7 @@ services:
     depends_on:
       - search-service
       - order-service
+      - web-frontend
     networks:
       - shop-network
 
@@ -66,6 +97,7 @@ services:
   search-service:
     build: ../../services/search-service
     container_name: search-service-demo
+    restart: unless-stopped
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
@@ -77,6 +109,7 @@ services:
   order-service:
     build: ../../services/order-service
     container_name: order-service-demo
+    restart: unless-stopped
     environment:
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
       - REDIS_URL=redis://redis:6379
@@ -92,6 +125,7 @@ services:
   indexer-service:
     build: ../../services/indexer-service
     container_name: indexer-service-demo
+    restart: unless-stopped
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
@@ -100,6 +134,16 @@ services:
       - elasticsearch
       - rabbitmq
       - postgres
+    networks:
+      - shop-network
+
+  # Web Frontend (UI)
+  web-frontend:
+    build: ../../services/web-frontend-next
+    container_name: web-frontend-demo
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
     networks:
       - shop-network
 

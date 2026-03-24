@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "amqplib": "^0.10.3",
-    "@elastic/elasticsearch": "^7.17.0"
+    "@elastic/elasticsearch": "^7.17.0",
+    "pg": "^8.11.3"
   }
 }
