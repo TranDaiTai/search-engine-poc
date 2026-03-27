@@ -9,132 +9,145 @@ const POSTGRES_URL = process.env.POSTGRES_URL || 'postgres://user:password@postg
 const esClient = new ESClient({ node: ELASTICSEARCH_URL });
 const pgClient = new PGClient({ connectionString: POSTGRES_URL });
 
-async function initElasticsearch() {
-    try {
-        const indexName = 'products';
-        const { body: exists } = await esClient.indices.exists({ index: indexName });
+const EXCHANGE_NAME = 'events';
+const SYNC_QUEUE = 'events_sync_queue';
+const DLX_NAME = 'events_dlx';
+const DLQ_NAME = 'events_dlq';
 
-        if (!exists) {
-            console.log(`[INIT] Index '${indexName}' does not exist. Creating with explicit mapping...`);
-            
-            // 1. Cấu hình Mapping Chuẩn Chỉ (Professional Explicit Mapping)
-            await esClient.indices.create({
-                index: indexName,
-                body: {
-                    mappings: {
-                        properties: {
-                            id: { type: 'keyword' },
-                            name: { type: 'text', analyzer: 'standard' },
-                            description: { type: 'text' },
-                            price: { type: 'float' },
-                            stock: { type: 'integer' },
-                            category: { type: 'keyword' },
-                            sku: { type: 'keyword' }
-                        }
+async function initElasticsearch() {
+    const indexName = 'products';
+    const auditIndex = 'order_audit';
+    
+    console.log(`[INIT] Checking ES indices...`);
+    const { body: exists } = await esClient.indices.exists({ index: indexName });
+    
+    if (!exists) {
+        console.log(`[INIT] Creating '${indexName}' index...`);
+        await esClient.indices.create({
+            index: indexName,
+            body: {
+                mappings: {
+                    properties: {
+                        id: { type: 'keyword' },
+                        name: { type: 'text', analyzer: 'standard' },
+                        description: { type: 'text' },
+                        price: { type: 'float' },
+                        stock: { type: 'integer' },
+                        category: { type: 'keyword' },
+                        sku: { type: 'keyword' }
                     }
                 }
-            });
-
-            console.log(`[INIT] Mapping created. Fetching initial data from PostgreSQL...`);
-
-            // 2. Lấy toàn bộ dữ liệu từ CSDL Gốc
-            const result = await pgClient.query(`
-                SELECT 
-                    v.id, v.sku, v.price, v.stock_quantity as stock,
-                    p.name, p.description,
-                    c.name as category
-                FROM product_variants v
-                JOIN products p ON v.product_id = p.id
-                JOIN categories c ON p.category_id = c.id
-            `);
-
-            const products = result.rows;
-            console.log(`[INIT] Found ${products.length} product variants in DB. Indexing to ES...`);
-
-            // 3. Đẩy dữ liệu vào ES (Bulk Insert)
-            for (const p of products) {
-                await esClient.index({
-                    index: indexName,
-                    id: p.id,
-                    body: {
-                        id: p.id,
-                        name: p.name,
-                        description: p.description,
-                        price: p.price,
-                        stock: p.stock,
-                        category: p.category,
-                        sku: p.sku
-                    }
-                });
             }
-            console.log(`[INIT] Synchronized all DB data to Elasticsearch successfully!`);
-        } else {
-            console.log(`[INIT] Index '${indexName}' already exists. Skipping initial sync.`);
+        });
+
+        console.log(`[INIT] Fetching data from Postgres...`);
+        const result = await pgClient.query(`
+            SELECT v.id, v.sku, v.price, v.stock_quantity as stock, p.name, p.description, c.name as category
+            FROM product_variants v
+            JOIN products p ON v.product_id = p.id
+            JOIN categories c ON p.category_id = c.id
+        `);
+        console.log(`[INIT] Syncing ${result.rows.length} rows to ES...`);
+        for (const p of result.rows) {
+            await esClient.index({ index: indexName, id: p.id, body: p });
         }
-    } catch (err) {
-        console.error('[INIT] Error during ES initialization:', err);
+        console.log(`[INIT] Elasticsearch populated successfully.`);
+    } else {
+        console.log(`[INIT] '${indexName}' index already exists.`);
+    }
+
+    const { body: auditExists } = await esClient.indices.exists({ index: auditIndex });
+    if (!auditExists) {
+        console.log(`[INIT] Creating '${auditIndex}' index...`);
+        await esClient.indices.create({ index: auditIndex });
     }
 }
 
 async function startWorker() {
-    try {
-        await pgClient.connect();
-        
-        // Auto-migrate and sync data from Postgres to ES on startup
-        await initElasticsearch();
-        const connection = await amqp.connect(RABBITMQ_URL);
-        const channel = await connection.createChannel();
+    console.log('Indexer Worker starting...');
+    let connected = false;
+    
+    while (!connected) {
+        try {
+            // Defensive PG Connect
+            try {
+                await pgClient.connect();
+                console.log('Connected to Postgres');
+            } catch (pgErr) {
+                if (!pgErr.message.includes('already been connected')) {
+                    throw pgErr;
+                }
+            }
+            
+            await initElasticsearch();
 
-        await channel.assertExchange('events', 'fanout', { durable: true });
-        const q = await channel.assertQueue('', { exclusive: true });
-        await channel.bindQueue(q.queue, 'events', '');
+            const connection = await amqp.connect(RABBITMQ_URL);
+            const channel = await connection.createChannel();
 
-        console.log('Indexer Worker listening for real time events...');
+            await channel.assertExchange(DLX_NAME, 'fanout', { durable: true });
+            await channel.assertQueue(DLQ_NAME, { durable: true });
+            await channel.bindQueue(DLQ_NAME, DLX_NAME, '');
 
-        channel.consume(q.queue, async (msg) => {
-            if (msg !== null) {
+            await channel.assertExchange(EXCHANGE_NAME, 'fanout', { durable: true });
+            await channel.assertQueue(SYNC_QUEUE, {
+                durable: true,
+                arguments: { 'x-dead-letter-exchange': DLX_NAME }
+            });
+            await channel.bindQueue(SYNC_QUEUE, EXCHANGE_NAME, '');
+
+            console.log('Indexer Worker listening with Reliability enabled...');
+
+            channel.consume(SYNC_QUEUE, async (msg) => {
+                if (!msg) return;
+                const event = JSON.parse(msg.content.toString());
+                const orderId = event.id;
+                console.log(`[PROCESS] Received event: ${event.type} for Order ${orderId}`);
+
                 try {
-                    const event = JSON.parse(msg.content.toString());
-                    
+                    const { body: alreadyProcessed } = await esClient.exists({ index: 'order_audit', id: orderId });
+                    if (alreadyProcessed) {
+                        console.warn(`[SKIP] Order ${orderId} already processed.`);
+                        return channel.ack(msg);
+                    }
+
                     if (event.type === 'ORDER_PLACED') {
-                        console.log(`Processing Order Event: ${event.id} for product ${event.productId}`);
+                        await pgClient.query('BEGIN');
+                        await pgClient.query('UPDATE orders SET status = $1 WHERE id = $2', ['COMPLETED', orderId]);
+                        await pgClient.query('UPDATE product_variants SET stock_quantity = stock_quantity - $1 WHERE id = $2', [event.quantity, event.productId]);
                         
-                        // 1. Update PG Order Status to COMPLETED
-                        await pgClient.query(
-                            'UPDATE orders SET status = $1 WHERE id = $2',
-                            ['COMPLETED', event.id]
-                        );
-                        
-                        // 2. Sync Stock decrement to DB (product_variants)
-                        await pgClient.query(
-                            'UPDATE product_variants SET stock_quantity = stock_quantity - $1 WHERE id = $2',
-                            [event.quantity, event.productId]
-                        );
-                        
-                        // 3. Sync Stock decrement to Elasticsearch
                         await esClient.update({
                             index: 'products',
-                            id: event.productId.toString(), // Document ID là Variant ID
-                            body: {
-                                script: {
-                                    source: "ctx._source.stock -= params.qty",
-                                    params: { qty: event.quantity }
-                                }
+                            id: event.productId,
+                            body: { 
+                                script: { 
+                                    source: "if (ctx._source.stock != null) { ctx._source.stock -= params.qty }", 
+                                    params: { qty: event.quantity } 
+                                } 
                             }
                         });
 
-                        console.log(`Successfully Synced: Order ${event.id} -> DB Variant Stock Update -> ES Stock Update.`);
+                        await esClient.index({ index: 'order_audit', id: orderId, body: { processed_at: new Date() } });
+                        await pgClient.query('COMMIT');
+                        console.log(`[SUCCESS] Order ${orderId} synced.`);
                     }
-                } catch (err) {
-                    console.error('Error syncing order event payload:', err);
-                } finally {
                     channel.ack(msg);
+                } catch (err) {
+                    console.error(`[ERROR] Processing Order ${orderId}:`, err.message);
+                    await pgClient.query('ROLLBACK').catch(() => {});
+                    const deathCount = (msg.properties.headers['x-death'] || []).length;
+                    if (deathCount < 3) {
+                        channel.nack(msg, false, true); 
+                    } else {
+                        channel.nack(msg, false, false); 
+                    }
                 }
-            }
-        });
-    } catch (error) {
-        console.error('Worker init error:', error);
-        process.exit(1); // Fail fast so Docker/K8s can reliably restart the pod
+            }, { noAck: false });
+
+            connected = true;
+        } catch (error) {
+            console.error('Worker init failed, retrying in 5s...', error.message);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
     }
 }
 
