@@ -6,6 +6,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import SearchInput from "@/components/ui/SearchInput";
 
+// ─── AccordionSection is TOP-LEVEL component ──────────────────────────────────
+// CRITICAL: Must NOT be defined inside FilterSidebar. If it were, React would
+// treat it as a new component type on every render, unmounting/remounting all
+// children (causing the sidebar to scroll reset).
 interface AccordionProps {
   id: string;
   title: string;
@@ -42,6 +46,7 @@ function AccordionSection({ id, title, isOpen, onToggle, children }: AccordionPr
     </div>
   );
 }
+// ──────────────────────────────────────────────────────────────────────────────
 
 const QUICK_PRICE_RANGES = [
   { label: "Dưới 500k", min: 0, max: 500000 },
@@ -64,7 +69,7 @@ interface FilterSidebarProps {
   categories: any[];
   productCount: number;
   handleClearAll: () => void;
-  setPage: (page: number | ((p: number) => number)) => void;
+  setPage: (page: number) => void;
 }
 
 export default function FilterSidebar({
@@ -87,6 +92,7 @@ export default function FilterSidebar({
   const [minInput, setMinInput] = useState(minPrice.toString());
   const [maxInput, setMaxInput] = useState(maxPrice.toString());
 
+  // Refs for imperative slider updates (no React re-render during drag)
   const trackFillRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLSpanElement>(null);
   const minSliderRef = useRef<HTMLInputElement>(null);
@@ -94,6 +100,7 @@ export default function FilterSidebar({
   const draftMinRef = useRef(minPrice);
   const draftMaxRef = useRef(maxPrice);
 
+  // Sync when external price state changes (clear all, quick preset)
   useEffect(() => {
     draftMinRef.current = minPrice;
     setMinInput(minPrice.toString());
@@ -110,6 +117,7 @@ export default function FilterSidebar({
     updatePriceLabel(draftMinRef.current, maxPrice);
   }, [maxPrice]);
 
+  // Imperative DOM update — bypasses React render cycle entirely
   const updateTrackFill = (min: number, max: number) => {
     if (trackFillRef.current) {
       trackFillRef.current.style.left = `${(min / 10000000) * 100}%`;
@@ -153,6 +161,7 @@ export default function FilterSidebar({
 
   return (
     <div className="space-y-0">
+      {/* Search */}
       <AccordionSection id="search" title="Tìm kiếm" isOpen={openSections.includes("search")} onToggle={toggleSection}>
         <SearchInput
           initialValue={searchTerm}
@@ -160,6 +169,7 @@ export default function FilterSidebar({
         />
       </AccordionSection>
 
+      {/* Categories */}
       <AccordionSection id="categories" title="Danh mục" isOpen={openSections.includes("categories")} onToggle={toggleSection}>
         <div className="flex flex-col gap-1.5">
           <button
@@ -177,16 +187,16 @@ export default function FilterSidebar({
           </button>
           {categories.map((cat: any) => (
             <button
-              key={cat.id || cat.name}
-              onClick={() => { setSelectedCategory(cat.id?.toString() || cat.name); setPage(1); }}
+              key={cat.id}
+              onClick={() => { setSelectedCategory(cat.id.toString()); setPage(1); }}
               className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
-                selectedCategory === (cat.id?.toString() || cat.name)
+                selectedCategory === cat.id.toString()
                   ? 'bg-primary text-white shadow-lg shadow-primary/20'
                   : 'bg-gray-50 text-primary/70 hover:bg-gray-100 hover:text-primary'
               }`}
             >
               <span>{cat.name}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === (cat.id?.toString() || cat.name) ? 'bg-white/20' : 'bg-gray-200'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === cat.id.toString() ? 'bg-white/20' : 'bg-gray-200'}`}>
                 {cat._count?.products || 0}
               </span>
             </button>
@@ -194,8 +204,10 @@ export default function FilterSidebar({
         </div>
       </AccordionSection>
 
+      {/* Price Range */}
       <AccordionSection id="price" title="Khoảng giá" isOpen={openSections.includes("price")} onToggle={toggleSection}>
         <div className="space-y-5">
+          {/* Quick price presets */}
           <div className="grid grid-cols-2 gap-2">
             {QUICK_PRICE_RANGES.map((range) => (
               <button
@@ -212,6 +224,7 @@ export default function FilterSidebar({
             ))}
           </div>
 
+          {/* Dual text inputs */}
           <div className="flex items-center gap-2">
             <div className="flex-1">
               <label className="text-xs text-primary/50 font-medium mb-1 block">Từ</label>
@@ -240,9 +253,12 @@ export default function FilterSidebar({
             </div>
           </div>
 
+          {/* Dual range slider — imperative updates, zero re-renders during drag */}
           <div className="space-y-3">
             <div className="relative h-10 flex items-center select-none">
+              {/* Background track */}
               <div className="absolute w-full h-1.5 bg-gray-100 rounded-full" />
+              {/* Active fill — updated via ref, not state */}
               <div
                 ref={trackFillRef}
                 className="absolute h-1.5 bg-accent rounded-full pointer-events-none"
@@ -251,6 +267,7 @@ export default function FilterSidebar({
                   right: `${100 - (maxPrice / 10000000) * 100}%`,
                 }}
               />
+              {/* Min thumb */}
               <input
                 ref={minSliderRef}
                 type="range"
@@ -261,6 +278,7 @@ export default function FilterSidebar({
                 onChange={(e) => {
                   const val = Math.min(Number(e.target.value), draftMaxRef.current - 500000);
                   draftMinRef.current = val;
+                  // Update DOM directly — no state, no re-render
                   updateTrackFill(val, draftMaxRef.current);
                   updatePriceLabel(val, draftMaxRef.current);
                   setMinInput(val.toString());
@@ -270,19 +288,10 @@ export default function FilterSidebar({
                   setMinPrice(val);
                   setPage(1);
                 }}
-                style={{ 
-                   zIndex: minPrice >= maxPrice - 500000 ? 5 : 3,
-                   position: 'absolute',
-                   width: '100%',
-                   height: '1.5px',
-                   appearance: 'none',
-                   WebkitAppearance: 'none',
-                   background: 'transparent',
-                   pointerEvents: 'none',
-                   outline: 'none'
-                }}
+                style={{ zIndex: minPrice >= maxPrice - 500000 ? 5 : 3 }}
                 className="range-slider"
               />
+              {/* Max thumb */}
               <input
                 ref={maxSliderRef}
                 type="range"
@@ -302,17 +311,7 @@ export default function FilterSidebar({
                   setMaxPrice(val);
                   setPage(1);
                 }}
-                style={{ 
-                   zIndex: maxPrice <= minPrice + 500000 ? 5 : 4,
-                   position: 'absolute',
-                   width: '100%',
-                   height: '1.5px',
-                   appearance: 'none',
-                   WebkitAppearance: 'none',
-                   background: 'transparent',
-                   pointerEvents: 'none',
-                   outline: 'none'
-                }}
+                style={{ zIndex: maxPrice <= minPrice + 500000 ? 5 : 4 }}
                 className="range-slider"
               />
             </div>
@@ -325,8 +324,55 @@ export default function FilterSidebar({
             </div>
           </div>
         </div>
+
+        <style jsx>{`
+          .range-slider {
+            position: absolute;
+            width: 100%;
+            height: 1.5px;
+            appearance: none;
+            -webkit-appearance: none;
+            background: transparent;
+            pointer-events: none;
+            outline: none;
+          }
+          .range-slider::-webkit-slider-thumb {
+            pointer-events: auto;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: white;
+            border: 2.5px solid #4F6F52;
+            cursor: grab;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            transition: transform 0.1s, background 0.1s;
+          }
+          .range-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            background: #4F6F52;
+          }
+          .range-slider::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.2);
+            background: #4F6F52;
+            box-shadow: 0 0 0 6px rgba(79,111,82,0.15);
+          }
+          .range-slider::-moz-range-thumb {
+            pointer-events: auto;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: white;
+            border: 2.5px solid #4F6F52;
+            cursor: grab;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+          }
+        `}</style>
       </AccordionSection>
 
+      {/* Status */}
       <AccordionSection id="status" title="Trạng thái" isOpen={openSections.includes("status")} onToggle={toggleSection}>
         <div className="grid grid-cols-3 gap-2">
           {[
@@ -350,6 +396,7 @@ export default function FilterSidebar({
         </div>
       </AccordionSection>
 
+      {/* Clear All */}
       {hasActiveFilters && (
         <motion.button
           initial={{ opacity: 0, y: 10 }}
@@ -360,42 +407,6 @@ export default function FilterSidebar({
           <X className="w-4 h-4" /> Xóa tất cả bộ lọc
         </motion.button>
       )}
-
-      <style jsx global>{`
-        .range-slider::-webkit-slider-thumb {
-          pointer-events: auto;
-          -webkit-appearance: none;
-          appearance: none;
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          background: white;
-          border: 2.5px solid #4F6F52;
-          cursor: grab;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-          transition: transform 0.1s, background 0.1s;
-        }
-        .range-slider::-webkit-slider-thumb:hover {
-          transform: scale(1.15);
-          background: #4F6F52;
-        }
-        .range-slider::-webkit-slider-thumb:active {
-          cursor: grabbing;
-          transform: scale(1.2);
-          background: #4F6F52;
-          box-shadow: 0 0 0 6px rgba(79,111,82,0.15);
-        }
-        .range-slider::-moz-range-thumb {
-          pointer-events: auto;
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          background: white;
-          border: 2.5px solid #4F6F52;
-          cursor: grab;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-        }
-      `}</style>
     </div>
   );
 }

@@ -2,22 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShoppingBag, User, Menu, X } from "lucide-react";
+import { ShoppingCart, User, Search, Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import SearchBar from "./SearchBar";
-import { Product } from "./ProductCard";
+import { useAuthStore } from "@/store/useAuthStore";
+import { useCartStore } from "@/store/useCartStore";
 
-interface NavbarProps {
-  onSearch: (query: string) => void;
-  results: Product[];
-  isLoading: boolean;
-}
-
-export default function Navbar({ onSearch, results, isLoading }: NavbarProps) {
+export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const { user } = useAuthStore();
+  const { getItemCount } = useCartStore();
+  const itemCount = getItemCount();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
@@ -40,25 +37,25 @@ export default function Navbar({ onSearch, results, isLoading }: NavbarProps) {
           : "py-8 bg-transparent"
       }`}
     >
-      <div className="max-w-[1400px] mx-auto px-6 lg:px-10 flex items-center justify-between gap-8">
+      <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 group shrink-0">
+        <Link href="/" className="flex items-center gap-3 group">
           <motion.div 
             animate={{ scale: isScrolled ? 0.9 : 1 }}
             className="w-10 h-10 bg-accent text-white rounded-xl flex items-center justify-center font-black text-xl group-hover:rotate-6 transition-transform shadow-lg shadow-accent/20"
           >
-            G
+            E
           </motion.div>
           <motion.span 
             animate={{ scale: isScrolled ? 0.95 : 1 }}
-            className="text-2xl font-black tracking-tighter uppercase italic text-primary"
+            className={`text-2xl font-black tracking-tighter uppercase italic transition-colors ${isScrolled ? 'text-primary' : 'text-primary'}`}
           >
-            Garage
+            EcoMarket
           </motion.span>
         </Link>
 
         {/* Desktop Menu */}
-        <div className="hidden xl:flex items-center gap-10">
+        <div className="hidden md:flex items-center gap-10">
           {menuItems.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -84,30 +81,39 @@ export default function Navbar({ onSearch, results, isLoading }: NavbarProps) {
           })}
         </div>
 
-        {/* Search Bar - Integrated from current project */}
-        <div className="flex-1 hidden md:block max-w-2xl px-4">
-          <SearchBar onSearch={onSearch} results={results} isLoading={isLoading} />
-        </div>
-
         {/* Actions */}
-        <div className="flex items-center gap-4 lg:gap-6 shrink-0">
-          <button className="p-2 text-primary/60 hover:text-accent transition-colors hidden sm:block">
-            <User className="w-5 h-5" />
+        <div className="flex items-center gap-6">
+          <button className="p-2 text-primary/60 hover:text-accent transition-colors">
+            <Search className="w-5 h-5" />
           </button>
           
-          <button className="relative p-2 text-primary/60 hover:text-accent transition-colors">
-            <ShoppingBag className="w-5 h-5" />
-            <motion.span 
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="absolute top-0 right-0 w-4 h-4 bg-accent text-[8px] text-white font-bold flex items-center justify-center rounded-full shadow-lg shadow-accent/30"
-            >
-              2
-            </motion.span>
-          </button>
+          <Link href="/cart" className="relative p-2 text-primary/60 hover:text-accent transition-colors">
+            <ShoppingCart className="w-5 h-5" />
+            {itemCount > 0 && (
+              <motion.span 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-0 right-0 w-4 h-4 bg-accent text-[8px] text-white font-bold flex items-center justify-center rounded-full shadow-lg shadow-accent/30"
+              >
+                {itemCount}
+              </motion.span>
+            )}
+          </Link>
+
+          <Link 
+            href={user ? "/profile" : "/login"} 
+            className="hidden md:flex items-center gap-3 pl-6 border-l border-gray-100 group"
+          >
+            <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-primary overflow-hidden border border-gray-50 transition-all group-hover:border-accent/40 shadow-sm">
+              {user?.avatar ? <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <User className="w-5 h-5" />}
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary group-hover:text-accent transition-colors">
+              {user ? user.username : "Tài khoản"}
+            </span>
+          </Link>
 
           <button 
-            className="xl:hidden p-2 text-primary"
+            className="md:hidden p-2 text-primary"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -122,7 +128,7 @@ export default function Navbar({ onSearch, results, isLoading }: NavbarProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="xl:hidden absolute top-full left-0 right-0 bg-white/95 backdrop-blur-xl shadow-2xl p-8 border-t border-gray-100 flex flex-col gap-6 overflow-hidden"
+            className="md:hidden absolute top-full left-0 right-0 bg-white/95 backdrop-blur-xl shadow-2xl p-8 border-t border-gray-100 flex flex-col gap-6 overflow-hidden"
           >
              {menuItems.map((item) => (
               <Link 
@@ -134,9 +140,16 @@ export default function Navbar({ onSearch, results, isLoading }: NavbarProps) {
                 {item.name}
               </Link>
             ))}
-            <div className="block md:hidden pt-4">
-              <SearchBar onSearch={onSearch} results={results} isLoading={isLoading} />
-            </div>
+            <Link 
+              href={user ? "/profile" : "/login"} 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="pt-8 mt-4 border-t border-gray-100 flex items-center gap-4"
+            >
+               <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-accent">
+                  <User className="w-5 h-5" />
+               </div>
+               <span className="text-sm font-black uppercase tracking-widest text-primary">Hồ sơ cá nhân</span>
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>

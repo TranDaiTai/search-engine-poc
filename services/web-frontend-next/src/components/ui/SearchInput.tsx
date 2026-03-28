@@ -14,10 +14,12 @@ export default function SearchInput({ initialValue, onSearch, placeholder = "Tì
   const [value, setValue] = useState(initialValue);
   const debouncedValue = useDebounce(value, 500);
 
+  // Update internal value if initialValue changes (e.g., on Clear All)
   useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
 
+  // Trigger onSearch when debounced value changes
   useEffect(() => {
     if (debouncedValue !== initialValue) {
       onSearch(debouncedValue);

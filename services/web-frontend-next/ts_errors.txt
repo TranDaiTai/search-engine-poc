@@ -1,0 +1,27 @@
+src/app/page.tsx(253,8): error TS2322: Type '{ children: Element; className: string; initial: { opacity: number; y: number; }; whileInView: { opacity: number; y: number; }; viewport: { once: boolean; margin: string; }; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'Omit<HTMLMotionProps<"section">, "ref">'.
+  Types of property 'transition' are incompatible.
+    Type '{ duration: number; ease: number[]; }' is not assignable to type 'Transition<any> | undefined'.
+      Type '{ duration: number; ease: number[]; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+        Type '{ duration: number; ease: number[]; }' is not assignable to type 'ValueAnimationTransition<any>'.
+          Types of property 'ease' are incompatible.
+            Type 'number[]' is not assignable to type 'Easing | Easing[] | undefined'.
+              Type 'number[]' is not assignable to type 'EasingFunction | Easing[]'.
+                Type 'number[]' is not assignable to type 'Easing[]'.
+                  Type 'number' is not assignable to type 'Easing'.
+src/app/page.tsx(303,8): error TS2322: Type '{ children: Element; className: string; initial: { opacity: number; y: number; }; whileInView: { opacity: number; y: number; }; viewport: { once: boolean; margin: string; }; transition: { duration: number; ease: number[]; }; }' is not assignable to type 'Omit<HTMLMotionProps<"section">, "ref">'.
+  Types of property 'transition' are incompatible.
+    Type '{ duration: number; ease: number[]; }' is not assignable to type 'Transition<any> | undefined'.
+      Type '{ duration: number; ease: number[]; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+        Type '{ duration: number; ease: number[]; }' is not assignable to type 'ValueAnimationTransition<any>'.
+          Types of property 'ease' are incompatible.
+            Type 'number[]' is not assignable to type 'Easing | Easing[] | undefined'.
+              Type 'number[]' is not assignable to type 'EasingFunction | Easing[]'.
+                Type 'number[]' is not assignable to type 'Easing[]'.
+                  Type 'number' is not assignable to type 'Easing'.
+src/app/products/[id]/page.tsx(5,20): error TS2307: Cannot find module '@/components/Navbar' or its corresponding type declarations.
+src/app/products/[id]/page.tsx(6,20): error TS2307: Cannot find module '@/components/Footer' or its corresponding type declarations.
+src/app/products/[id]/page.tsx(30,38): error TS2307: Cannot find module '@/components/ProductCard' or its corresponding type declarations.
+src/app/products/[id]/page.tsx(31,31): error TS2307: Cannot find module '@/components/ToastNotification' or its corresponding type declarations.
+src/app/products/[id]/page.tsx(32,24): error TS2307: Cannot find module '@/components/OrderModal' or its corresponding type declarations.
+src/components/layout/Footer.tsx(3,10): error TS2305: Module '"lucide-react"' has no exported member 'Facebook'.
+src/components/layout/Footer.tsx(3,20): error TS2305: Module '"lucide-react"' has no exported member 'Instagram'.

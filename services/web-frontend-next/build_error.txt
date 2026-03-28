@@ -1,0 +1,16 @@
+
+> web-frontend-next@0.1.0 build
+> next build
+
+Γû▓ Next.js 16.2.1 (Turbopack)
+
+
+> Build error occurred
+Error: Ambiguous app routes detected:
+
+Ambiguous route pattern "/products/[*]" matches multiple routes:
+  - /products/[id]
+  - /products/[slug]
+
+These routes cannot be distinguished from each other when matching URLs. Please ensure that dynamic segments have unique patterns or use different static segments.
+    at ignore-listed frames

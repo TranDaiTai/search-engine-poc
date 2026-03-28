@@ -1,6 +1,6 @@
 "use client";
 
-import { Share2, Globe, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Globe, Send, CircleCheck, CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -31,15 +31,15 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-16">
         <div className="space-y-8">
           <div className="flex items-center gap-3">
-             <div className="w-10 h-10 bg-white text-primary rounded-xl flex items-center justify-center font-black text-xl">G</div>
-             <span className="text-2xl font-black tracking-tighter uppercase italic text-white">Garage</span>
+             <div className="w-10 h-10 bg-white text-primary rounded-xl flex items-center justify-center font-black text-xl">E</div>
+             <span className="text-2xl font-black tracking-tighter uppercase italic">EcoMarket</span>
           </div>
           <p className="text-white/70 text-sm font-medium italic leading-relaxed">
             "Sứ mệnh của chúng tôi là mang đến những sản phẩm bền vững và phong cách cho mọi người dùng hiện đại."
           </p>
           <div className="flex items-center gap-6">
             <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/80 hover:bg-accent hover:text-white transition-all">
-              <Share2 className="w-5 h-5" />
+              <Globe className="w-5 h-5" />
             </a>
             <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/80 hover:bg-accent hover:text-white transition-all">
               <Globe className="w-5 h-5" />
@@ -93,7 +93,7 @@ export default function Footer() {
                     exit={{ opacity: 0 }}
                     className="text-[10px] font-bold text-accent flex items-center gap-2"
                   >
-                    <CheckCircle2 className="w-3 h-3" /> {message}
+                    <CircleCheck className="w-3 h-3" /> {message}
                   </motion.p>
                 )}
                 {status === "error" && (
@@ -103,7 +103,7 @@ export default function Footer() {
                     exit={{ opacity: 0 }}
                     className="text-[10px] font-bold text-red-400 flex items-center gap-2"
                   >
-                    <AlertCircle className="w-3 h-3" /> {message}
+                    <CircleAlert className="w-3 h-3" /> {message}
                   </motion.p>
                 )}
               </AnimatePresence>
@@ -116,7 +116,7 @@ export default function Footer() {
       </div>
       
       <div className="max-w-7xl mx-auto px-6 mt-20 pt-10 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 text-xs font-bold uppercase tracking-widest text-white/60">
-         <p>© 2026 Garage. All rights reserved.</p>
+         <p>© 2026 EcoMarket. All rights reserved.</p>
          <div className="flex gap-10">
             <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
             <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
