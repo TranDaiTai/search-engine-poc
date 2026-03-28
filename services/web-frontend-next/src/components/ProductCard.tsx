@@ -1,79 +1,150 @@
-import { ShoppingCart } from "lucide-react";
+"use client";
 
-export type Product = {
+import { motion, AnimatePresence } from "framer-motion";
+import { Star, ArrowRight, ShoppingCart, Heart, Eye, Check, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { formatCurrency, getImageUrl } from "@/lib/utils";
+import { useState } from "react";
+
+export interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
   stock: number;
   category: string;
-};
+  sku?: string;
+  score?: number;
+  image?: string; // Optional image field
+}
 
-export default function ProductCard({ 
-  product, 
-  onBuy
-}: { 
-  product: Product; 
+interface ProductCardProps {
+  product: Product;
   onBuy: (product: Product) => void;
-}) {
-  const isOutOfStock = product.stock <= 0;
-  
-  const getProductEmoji = (cat: string) => {
-    const map: Record<string, string> = { 'Electronics': '💻', 'Accessories': '🎧', 'Gaming': '🎮', 'Toys': '🚗' };
-    return map[cat] || '📦';
+  index?: number;
+}
+
+export default function ProductCard({ product, onBuy, index = 0 }: ProductCardProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onBuy(product);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
   };
 
+  const rating = "4.9";
+  const isOutOfStock = product.stock <= 0;
+
   return (
-    <div className="group bg-white border border-slate-200 relative rounded-[2rem] p-4 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:border-brand-primary/30 flex flex-col gap-4 overflow-hidden">
-      
-      {/* Product Image Area */}
-      <div className="w-full aspect-square bg-slate-50 border border-slate-100 rounded-[1.5rem] flex items-center justify-center text-8xl relative overflow-hidden group-hover:bg-slate-100 transition-colors duration-500">
-        <div className="absolute inset-0 bg-brand-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        <span className="group-hover:-rotate-3 group-hover:scale-110 transition-transform duration-500 ease-out z-10 drop-shadow-sm">
-          {getProductEmoji(product.category)}
-        </span>
-        
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="group flex flex-col bg-white rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden h-full border border-gray-100"
+    >
+      {/* Image Container */}
+      <div className="relative aspect-[4/5] bg-secondary/30 overflow-hidden flex-shrink-0">
+        <div className="block w-full h-full relative">
+          <img
+            src={getImageUrl(product.image)}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+          />
+        </div>
+
         {/* Badges */}
-        <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
-           <span className="bg-white/90 backdrop-blur-md text-slate-700 text-xs font-extrabold px-3 py-1.5 rounded-full border border-slate-200 uppercase tracking-widest shadow-sm">
-             {product.category}
-           </span>
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
+          <div className="px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-[9px] font-black uppercase tracking-wider text-primary shadow-sm">
+            {product.category || "Premium"}
+          </div>
+          {isOutOfStock && (
+            <div className="px-3 py-1 bg-red-500 text-white rounded-full text-[9px] font-black uppercase tracking-wider shadow-sm">
+              Hết hàng
+            </div>
+          )}
         </div>
-      </div>
-      
-      <div className="px-2 mt-2 space-y-1">
-        <h3 className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-brand-primary transition-colors line-clamp-1">
-          {product.name}
-        </h3>
-        <p className="text-slate-500 text-sm line-clamp-2 h-10 leading-relaxed font-normal">
-          {product.description || 'No description available for this premium tech item.'}
-        </p>
-      </div>
-      
-      <div className="px-2 flex items-end justify-between mt-auto pt-2">
-        <div className="flex flex-col">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Price</span>
-          <div className="text-3xl font-black text-slate-900 leading-none">${product.price || '??'}</div>
-        </div>
-        
-        <button 
-          onClick={() => onBuy(product)}
-          disabled={isOutOfStock}
-          className={`flex items-center justify-center w-12 h-12 rounded-2xl transition-all shadow-md group ${
-            isOutOfStock 
-            ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none border border-slate-200' 
-            : 'bg-brand-primary text-white hover:bg-blue-700 hover:scale-110 hover:shadow-brand-primary/40'
-          }`}
-          title={isOutOfStock ? "Out of Stock" : "Add to Cart"}
-        >
-          <ShoppingCart className={`w-5 h-5 ${isOutOfStock ? '' : 'fill-current group-hover:animate-pulse'}`} />
-        </button>
+
+        {/* Hover Actions Overlay */}
+        <AnimatePresence>
+          {isHovered && !isOutOfStock && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-primary/20 backdrop-blur-[2px] flex items-center justify-center gap-3 z-20"
+            >
+              <motion.button
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.05 }}
+                onClick={handleAddToCart}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-xl ${
+                  added ? 'bg-accent text-white scale-110' : 'bg-white text-primary hover:bg-accent hover:text-white'
+                }`}
+                title="Thêm vào giỏ"
+              >
+                {added ? <Check className="w-5 h-5" /> : <ShoppingCart className="w-5 h-5" />}
+              </motion.button>
+
+              <motion.button
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="w-12 h-12 rounded-full bg-white text-primary flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-xl"
+                title="Yêu thích"
+              >
+                <Heart className="w-5 h-5" />
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className={`px-2 text-[11px] font-extrabold tracking-widest uppercase mt-1 ${isOutOfStock ? 'text-rose-500' : 'text-emerald-500'}`}>
-        {isOutOfStock ? 'OUT OF STOCK' : `IN STOCK (${product.stock})`}
+      {/* Content */}
+      <div className="flex flex-col flex-1 p-4 md:p-5 space-y-2">
+        {/* Rating */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 text-accent">
+            <Star className="w-3 h-3 fill-accent" />
+            <span className="text-xs font-bold">{rating}</span>
+          </div>
+          <span className="text-[10px] font-medium text-primary/40 uppercase tracking-widest">#{product.id.substring(0, 8)}</span>
+        </div>
+
+        {/* Name */}
+        <h3
+          className="text-sm md:text-base font-black text-primary tracking-tight uppercase group-hover:text-accent transition-colors leading-snug line-clamp-2"
+        >
+          {product.name}
+        </h3>
+
+        {/* Description */}
+        <p className="text-[10px] text-primary/60 line-clamp-2 leading-relaxed">
+          {product.description}
+        </p>
+
+        {/* Price Row */}
+        <div className="flex items-end justify-between pt-2 mt-auto">
+          <div className="space-y-0.5">
+            <p className="text-lg md:text-xl font-black text-primary tracking-tighter">
+              {formatCurrency(product.price)}
+            </p>
+          </div>
+          <button
+            onClick={() => onBuy(product)}
+            disabled={isOutOfStock}
+            className="text-[10px] font-black uppercase tracking-widest text-primary/50 group-hover:text-accent transition-colors flex items-center gap-1.5 pb-0.5 disabled:opacity-50"
+          >
+            {isOutOfStock ? "Hết hàng" : "Mua ngay"} <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
       </div>
-      
-    </div>
+    </motion.div>
   );
 }

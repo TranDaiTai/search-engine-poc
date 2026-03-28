@@ -48,7 +48,7 @@ app.get('/search', async (req, res) => {
     // --- 1. Advanced Query DSL with Boosting & Fuzziness ---
     let queryBody = {
         bool: {
-            must: [
+            must: q === '*' ? [{ match_all: {} }] : [
                 {
                     multi_match: {
                         query: q,

@@ -1,39 +1,79 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-primary: #2563eb; /* Blue 600 */
-  --color-brand-secondary: #06b6d4; /* Cyan 500 */
-  --color-brand-bg: #f8fafc; /* Slate 50 */
-  --color-brand-surface: #ffffff; /* White */
-  --color-brand-glass: rgba(255, 255, 255, 0.8);
-
-  --font-inter: var(--font-inter);
-  --font-outfit: var(--font-outfit);
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(222 47% 11%);
+  
+  --color-primary: hsl(222 47% 11%); /* Navy */
+  --color-primary-foreground: hsl(210 40% 98%);
+  
+  --color-accent: #4F6F52; /* Green */
+  --color-accent-foreground: hsl(210 40% 98%);
+  
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222 47% 11.2%);
+  
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  
+  --radius-custom: 1rem;
 }
 
-:root {
-  --background: #f8fafc;
-  --foreground: #0f172a; /* Slate 900 */
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), sans-serif;
-  overflow-x: hidden;
-}
-
-@layer utilities {
-  .text-gradient {
-    background: linear-gradient(to right, #2563eb, #06b6d4);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-size: max(16px, 1rem);
   }
-  .bg-glass {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+@layer components {
+  .premium-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-xl rounded-[2.5rem] transition-all duration-500 hover:shadow-2xl hover:scale-[1.01];
   }
+  
+  .glass-effect {
+    @apply bg-white/40 backdrop-blur-xl border border-white/40 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)];
+  }
+  
+  .btn-primary {
+    @apply bg-accent text-white rounded-2xl transition-all duration-300 hover:bg-accent/90 hover:scale-105 active:scale-95 shadow-lg font-bold tracking-tight;
+  }
+
+  .text-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+}
+
+/* Accessibility Enforcement */
+.text-\[10px\] { font-size: 0.75rem !important; }
+.text-\[8px\]  { font-size: 0.75rem !important; }
+.text-\[9px\]  { font-size: 0.75rem !important; }
+
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-primary\/20,
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-primary\/30,
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-primary\/40 {
+  color: hsl(222 47% 11% / 0.65) !important;
+}
+
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-white\/20,
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-white\/30,
+:is(p, span, a, label, h1, h2, h3, h4, h5, h6, button, th, td, li).text-white\/40 {
+  color: rgb(255 255 255 / 0.7) !important;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.shadow-premium {
+  box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1);
 }
