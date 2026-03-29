@@ -155,10 +155,90 @@ async function startWorker() {
         console.log('[INIT] Listening for events...');
         channel.consume(SYNC_QUEUE, async (msg) => {
             if (!msg) return;
-            const event = JSON.parse(msg.content.toString());
-            console.log(`[EVENT] Received ${event.type} for Order ${event.id}`);
-            // Logic for order processing...
-            channel.ack(msg);
+            let event;
+            try {
+                event = JSON.parse(msg.content.toString());
+            } catch (e) {
+                console.error('[EVENT] Failed to parse message:', e.message);
+                channel.nack(msg, false, false); // Gửi vào DLQ
+                return;
+            }
+
+            console.log(`[EVENT] Received: ${event.type} | Order: ${event.orderId} | Variant: ${event.variantId} | Qty: ${event.quantity}`);
+
+            try {
+                if (event.type === 'ORDER_PLACED') {
+                    const { orderId, variantId, productId, quantity } = event;
+
+                    // Bước 1: Trừ tồn kho thật trong Postgres
+                    const updateRes = await pgClient.query(
+                        `UPDATE product_variants
+                         SET stock_quantity = GREATEST(0, stock_quantity - $1)
+                         WHERE id = $2
+                         RETURNING product_id, stock_quantity`,
+                        [quantity, variantId]
+                    );
+
+                    if (updateRes.rows.length === 0) {
+                        console.warn(`[EVENT] Variant ${variantId} not found in Postgres`);
+                    } else {
+                        const { product_id: pgProductId, stock_quantity: newStock } = updateRes.rows[0];
+                        const resolvedProductId = productId || pgProductId;
+                        console.log(`[EVENT] Postgres stock updated: variant ${variantId} → ${newStock} remaining`);
+
+                        // Bước 2: Re-sync sản phẩm lên Elasticsearch với tồn kho mới
+                        const productRes = await pgClient.query(`
+                            SELECT
+                                p.id, p.name, p.slug, p.description,
+                                p.category_id as "categoryId",
+                                p.created_at as "createdAt",
+                                c.name as category,
+                                COALESCE(MIN(v.price), 0) as price,
+                                CASE WHEN MIN(v.price) IS NOT NULL THEN (MIN(v.price) * 1.25) ELSE 0 END as "originalPrice",
+                                COALESCE(SUM(v.stock_quantity), 0) as stock,
+                                (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
+                            FROM products p
+                            JOIN categories c ON p.category_id = c.id
+                            LEFT JOIN product_variants v ON p.id = v.product_id
+                            WHERE p.id = $1
+                            GROUP BY p.id, c.name
+                        `, [resolvedProductId]);
+
+                        if (productRes.rows.length > 0) {
+                            await esClient.index({
+                                index: 'products',
+                                id: resolvedProductId,
+                                body: productRes.rows[0]
+                            });
+                            console.log(`[EVENT] Elasticsearch updated: product ${resolvedProductId} stock = ${productRes.rows[0].stock}`);
+                        }
+                    }
+
+                    // Bước 3: Chuyển trạng thái đơn hàng → COMPLETED
+                    await pgClient.query(
+                        `UPDATE orders SET status = 'COMPLETED' WHERE id = $1`,
+                        [orderId]
+                    );
+                    console.log(`[EVENT] Order ${orderId} → COMPLETED ✓`);
+
+                    // Bước 4: Ghi audit log
+                    await esClient.index({
+                        index: 'order_audit',
+                        body: {
+                            ...event,
+                            processedAt: new Date().toISOString(),
+                            status: 'COMPLETED'
+                        }
+                    });
+                }
+
+                channel.ack(msg);
+                console.log(`[EVENT] Processed successfully ✓`);
+
+            } catch (err) {
+                console.error(`[EVENT] Processing failed:`, err.message);
+                channel.nack(msg, false, false); // Gửi vào DLQ, không requeue
+            }
         });
 
     } catch (err) {

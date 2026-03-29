@@ -1,18 +1,20 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, ArrowRight, ShoppingCart, Heart, Eye, Check, TrendingUp } from "lucide-react";
+import { Star, ArrowRight, ShoppingCart, Heart, Eye, Check, TrendingUp, Zap } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { formatCurrency, getImageUrl } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import QuickBuyModal from "./QuickBuyModal";
 
 export default function ProductCard({ product, index }: { product: any; index: number }) {
   const { addToCart } = useCartStore();
   const [isHovered, setIsHovered] = useState(false);
   const [added, setAdded] = useState(false);
+  const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
 
   // --- Normalize product data from real API ---
   // Price lives in variants[0].price (Prisma Decimal → comes as string/number)
@@ -144,6 +146,17 @@ export default function ProductCard({ product, index }: { product: any; index: n
               <motion.button
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.08 }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsQuickBuyOpen(true); }}
+                className="w-12 h-12 rounded-full bg-accent text-white flex items-center justify-center hover:bg-primary transition-all shadow-xl"
+                title="Mua ngay"
+              >
+                <Zap className="w-5 h-5" />
+              </motion.button>
+
+              <motion.button
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.1 }}
                 className="w-12 h-12 rounded-full bg-white text-primary flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-xl"
                 title="Yêu thích"
@@ -236,6 +249,13 @@ export default function ProductCard({ product, index }: { product: any; index: n
           </Link>
         </div>
       </div>
+
+      {/* Quick Buy Modal */}
+      <QuickBuyModal
+        product={product}
+        isOpen={isQuickBuyOpen}
+        onClose={() => setIsQuickBuyOpen(false)}
+      />
     </motion.div>
   );
 }
