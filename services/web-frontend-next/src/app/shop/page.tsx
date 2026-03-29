@@ -11,6 +11,7 @@ import { Suspense, useState, useMemo, useEffect, useCallback, useTransition, use
 import ProductCard from "@/components/product/ProductCard";
 import ProductSkeleton from "@/components/product/ProductSkeleton";
 import FilterSidebar from "@/components/product/FilterSidebar";
+import Pagination from "@/components/ui/Pagination";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function ShopContent() {
@@ -53,33 +54,36 @@ function ShopContent() {
   }, []);
 
   // --- URL Synchronization Methods ---
-  const setUrlParam = useCallback((name: string, value: string | null) => {
-    startTransition(() => {
-      const params = new URLSearchParams(searchParams.toString());
+  const updateUrl = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    
+    Object.entries(updates).forEach(([name, value]) => {
       if (value) params.set(name, value);
       else params.delete(name);
-      
-      // Always reset page on filter change
-      if (name !== 'page') params.delete('page');
-      
-      router.push(`/shop?${params.toString()}`, { scroll: false });
     });
+
+    // Always reset page on filter change (unless we are explicitly setting it)
+    if (!updates.hasOwnProperty('page')) {
+      params.delete('page');
+    }
+    
+    console.log(`[SHOP] Navigation: /shop?${params.toString()}`);
+    router.push(`/shop?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
   const handleClearAll = () => {
-    startTransition(() => {
-      router.push('/shop', { scroll: false });
-      setIsMobileFilterOpen(false);
-    });
+    console.log(`[SHOP] Clearing all`);
+    router.push('/shop', { scroll: false });
+    setIsMobileFilterOpen(false);
   };
 
-  const handleSetSearch = (val: string) => setUrlParam("q", val);
-  const handleSetCategory = (val: string | null) => setUrlParam("category", val);
-  const handleSetMinPrice = (val: number) => setUrlParam("minPrice", val.toString());
-  const handleSetMaxPrice = (val: number) => setUrlParam("maxPrice", val.toString());
-  const handleSetStatus = (val: string | null) => setUrlParam("status", val);
-  const handleSetSort = (val: string) => setUrlParam("sort", val);
-  const setPage = (p: number) => setUrlParam("page", p.toString());
+  const handleSetSearch = (val: string) => updateUrl({ q: val });
+  const handleSetCategory = (val: string | null) => updateUrl({ category: val });
+  const handleSetMinPrice = (val: number) => updateUrl({ minPrice: val.toString() });
+  const handleSetMaxPrice = (val: number) => updateUrl({ maxPrice: val.toString() });
+  const handleSetStatus = (val: string | null) => updateUrl({ status: val });
+  const handleSetSort = (val: string) => updateUrl({ sort: val });
+  const setPage = (p: number) => updateUrl({ page: p.toString() });
 
   // --- Data Fetching ---
   const { data: categoriesData = [] } = useQuery({
@@ -139,6 +143,9 @@ function ShopContent() {
     <main className="min-h-screen bg-gray-50/50">
       <Navbar />
       
+        <GlobalSearch />
+
+      
       <div className="max-w-7xl mx-auto px-6 pt-20 pb-20">
         <div className="flex flex-col lg:flex-row gap-16">
 
@@ -151,8 +158,7 @@ function ShopContent() {
               minPrice={minPrice}
               maxPrice={maxPrice}
               onPriceChange={(min: number, max: number) => {
-                handleSetMinPrice(min);
-                handleSetMaxPrice(max);
+                updateUrl({ minPrice: min.toString(), maxPrice: max.toString() });
               }}
               status={status}
               onStatusChange={handleSetStatus}
@@ -296,28 +302,13 @@ function ShopContent() {
 
               {/* Pagination */}
               {!isLoading && products.length > 0 && (
-                <div className="mt-20 pt-10 border-t border-gray-100 flex items-center justify-between">
-                  <p className="hidden md:block text-xs font-bold uppercase tracking-widest text-primary/60">
-                    Trang {page} / {totalPages} &bull; {totalItems} sản phẩm
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <button
-                      disabled={!hasPrev}
-                      onClick={() => setPage(page - 1)}
-                      className="w-12 h-12 flex items-center justify-center rounded-2xl border border-gray-100 bg-white hover:bg-secondary disabled:opacity-20 transition-all shadow-sm"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <span className="text-[10px] font-black uppercase bg-primary text-white w-12 h-12 flex items-center justify-center rounded-2xl shadow-xl shadow-primary/20">{page}</span>
-                    <button
-                      disabled={!hasNext}
-                      onClick={() => setPage(page + 1)}
-                      className="w-12 h-12 flex items-center justify-center rounded-2xl border border-gray-100 bg-white hover:bg-secondary disabled:opacity-20 transition-all shadow-sm"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
+                <Pagination 
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  totalItems={totalItems}
+                  itemsPerPage={limit}
+                />
               )}
             </div>
           </div>

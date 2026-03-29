@@ -136,21 +136,18 @@ export default function FilterSidebar({
 
   const applyQuickRange = (min: number, max: number) => {
     onPriceChange(min, max);
-    setPage(1);
   };
 
   const handleMinInputBlur = () => {
     const val = Math.min(Number(minInput) || 0, maxPrice - 500000);
     onPriceChange(val, maxPrice);
     setMinInput(val.toString());
-    setPage(1);
   };
 
   const handleMaxInputBlur = () => {
     const val = Math.max(Number(maxInput) || 10000000, minPrice + 500000);
     onPriceChange(minPrice, Math.min(val, 10000000));
     setMaxInput(Math.min(val, 10000000).toString());
-    setPage(1);
   };
 
   const hasActiveFilters = searchTerm !== "" || selectedCategory !== null || minPrice > 0 || maxPrice < 10000000 || status !== null;
@@ -162,7 +159,7 @@ export default function FilterSidebar({
       <AccordionSection id="categories" title="Danh mục" isOpen={openSections.includes("categories")} onToggle={toggleSection}>
         <div className="flex flex-col gap-1.5">
           <button
-            onClick={() => { onCategoryChange(null); setPage(1); }}
+            onClick={() => { onCategoryChange(null); }}
             className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
               selectedCategory === null
                 ? 'bg-primary text-white shadow-lg shadow-primary/20'
@@ -177,7 +174,7 @@ export default function FilterSidebar({
           {categories.map((cat: any) => (
             <div key={cat.id} className="space-y-1">
               <button
-                onClick={() => { onCategoryChange(cat.id.toString()); setPage(1); }}
+                onClick={() => { onCategoryChange(cat.id.toString()); }}
                 className={`flex items-center justify-between w-full px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
                   selectedCategory === cat.id.toString()
                     ? 'bg-primary text-white shadow-lg shadow-primary/20'
@@ -196,7 +193,7 @@ export default function FilterSidebar({
                   {cat.children.map((sub: any) => (
                     <button
                       key={sub.id}
-                      onClick={() => { onCategoryChange(sub.id.toString()); setPage(1); }}
+                      onClick={() => { onCategoryChange(sub.id.toString()); }}
                       className={`flex items-center justify-between w-full px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${
                         selectedCategory === sub.id.toString()
                           ? 'bg-accent text-white shadow-md shadow-accent/20'

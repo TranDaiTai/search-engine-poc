@@ -1,191 +1,156 @@
 const amqp = require('amqplib');
-const { Client: ESClient } = require('@elastic/elasticsearch');
-const { Client: PGClient } = require('pg');
+const { Client } = require('pg');
+const { Client: EsClient } = require('@elastic/elasticsearch');
 
-const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
-const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
+const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://user:password@rabbitmq:5672';
+const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://elasticsearch:9200';
 const POSTGRES_URL = process.env.POSTGRES_URL || 'postgres://user:password@postgres:5432/orders_db';
 
-const esClient = new ESClient({ node: ELASTICSEARCH_URL });
-const pgClient = new PGClient({ connectionString: POSTGRES_URL });
+const EXCHANGE_NAME = 'order_events';
+const SYNC_QUEUE = 'search_sync_queue';
+const DLQ_NAME = 'search_sync_dlq';
+const DLX_NAME = 'order_events_dlx';
 
-const EXCHANGE_NAME = 'events';
-const SYNC_QUEUE = 'events_sync_queue';
-const DLX_NAME = 'events_dlx';
-const DLQ_NAME = 'events_dlq';
+const esClient = new EsClient({ node: ELASTICSEARCH_URL });
 
 async function initElasticsearch() {
-    console.log(`[INIT] Starting ES check...`);
-    
-    try {
-        // --- 1. Products Index ---
-        const indexName = 'products';
-        const existsRes = await esClient.indices.exists({ index: indexName });
-        const exists = existsRes.body;
-        console.log(`[INIT] Index '${indexName}' exists: ${exists}`);
+    console.log('[ELASTIC] Initializing indices...');
+    const productIndex = 'products';
+    const categoryIndex = 'categories';
+    const auditIndex = 'order_audit';
 
+    const indices = [
+        { 
+            name: productIndex, 
+            body: {
+                settings: {
+                    analysis: {
+                        analyzer: {
+                            ngram_analyzer: { type: 'custom', tokenizer: 'ngram_tokenizer', filter: ['lowercase'] }
+                        },
+                        tokenizer: {
+                            ngram_tokenizer: { type: 'ngram', min_gram: 2, max_gram: 15, token_chars: ['letter', 'digit'] }
+                        }
+                    }
+                },
+                mappings: {
+                    properties: {
+                        id: { type: 'keyword' },
+                        name: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
+                        slug: { type: 'keyword' },
+                        description: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
+                        price: { type: 'float' },
+                        originalPrice: { type: 'float' },
+                        stock: { type: 'integer' },
+                        category: { type: 'keyword' },
+                        categoryId: { type: 'keyword' },
+                        image: { type: 'keyword' },
+                        createdAt: { type: 'date' }
+                    }
+                }
+            }
+        },
+        { 
+            name: categoryIndex, 
+            body: {
+                mappings: {
+                    properties: {
+                        id: { type: 'keyword' },
+                        name: { type: 'keyword' },
+                        slug: { type: 'keyword' },
+                        parentId: { type: 'keyword' }
+                    }
+                }
+            }
+        },
+        { name: auditIndex, body: {} }
+    ];
+
+    for (const idx of indices) {
+        const { body: exists } = await esClient.indices.exists({ index: idx.name });
         if (!exists) {
-            console.log(`[INIT] Creating '${indexName}'...`);
-            await esClient.indices.create({
-                index: indexName,
-                body: {
-                    settings: {
-                        analysis: {
-                            filter: { ngram_filter: { type: 'edge_ngram', min_gram: 2, max_gram: 20 } },
-                            analyzer: { ngram_analyzer: { type: 'custom', tokenizer: 'standard', filter: ['lowercase', 'ngram_filter'] } }
-                        }
-                    },
-                    mappings: {
-                        properties: {
-                            id: { type: 'keyword' },
-                            name: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
-                            slug: { type: 'keyword' },
-                            description: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
-                            price: { type: 'float' },
-                            stock: { type: 'integer' },
-                            category: { type: 'keyword' },
-                            categoryId: { type: 'keyword' },
-                            image: { type: 'keyword' },
-                            createdAt: { type: 'date' }
-                        }
-                    }
-                }
-            });
-
-            const result = await pgClient.query(`
-                SELECT 
-                    p.id, p.name, p.slug, p.description, p.category_id as "categoryId",
-                    p.created_at as "createdAt",
-                    c.name as category,
-                    MIN(v.price) as price,
-                    SUM(v.stock_quantity) as stock,
-                    (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
-                FROM products p
-                LEFT JOIN product_variants v ON p.id = v.product_id
-                LEFT JOIN categories c ON p.category_id = c.id
-                GROUP BY p.id, p.name, p.slug, p.description, p.category_id, p.created_at, c.name
-            `);
-            
-            console.log(`[INIT] Syncing ${result.rows.length} products...`);
-            for (const p of result.rows) {
-                await esClient.index({ index: indexName, id: p.id, body: p });
-            }
+            await esClient.indices.create({ index: idx.name, body: idx.body });
+            console.log(`[ELASTIC] Created index: ${idx.name}`);
         }
-
-        // --- 2. Categories Index ---
-        const categoriesIndex = 'categories';
-        const catExistsRes = await esClient.indices.exists({ index: categoriesIndex });
-        const catExists = catExistsRes.body;
-        console.log(`[INIT] Index '${categoriesIndex}' exists: ${catExists}`);
-
-        if (!catExists) {
-            console.log(`[INIT] Creating '${categoriesIndex}'...`);
-            await esClient.indices.create({
-                index: categoriesIndex,
-                body: {
-                    mappings: {
-                        properties: {
-                            id: { type: 'keyword' },
-                            name: { type: 'text' },
-                            slug: { type: 'keyword' },
-                            imageUrl: { type: 'keyword' },
-                            parentId: { type: 'keyword' },
-                            description: { type: 'text' }
-                        }
-                    }
-                }
-            });
-
-            console.log(`[INIT] Fetching categories from Postgres...`);
-            const catResult = await pgClient.query(`SELECT id, name, slug, parent_id as "parentId", image_url as "imageUrl", description FROM categories`);
-            console.log(`[INIT] Syncing ${catResult.rows.length} categories...`);
-            for (const c of catResult.rows) {
-                await esClient.index({ index: categoriesIndex, id: c.id, body: c });
-            }
-        }
-
-        // --- 3. Audit Index ---
-        const auditIndex = 'order_audit';
-        const auditExistsRes = await esClient.indices.exists({ index: auditIndex });
-        if (!auditExistsRes.body) {
-            await esClient.indices.create({ index: auditIndex });
-        }
-        
-        console.log(`[INIT] ALL OK.`);
-    } catch (err) {
-        console.error(`[INIT ERROR]`, err);
-        throw err;
     }
 }
 
+async function syncCategories(pgClient) {
+    console.log('[SYNC] Categories...');
+    const res = await pgClient.query('SELECT id, name, slug, parent_id as "parentId" FROM categories');
+    for (const cat of res.rows) {
+        await esClient.index({ index: 'categories', id: cat.id, body: cat });
+    }
+    console.log(`[SYNC] ${res.rows.length} categories synced.`);
+}
+
+async function syncProducts(pgClient) {
+    console.log('[SYNC] Products...');
+    const res = await pgClient.query(`
+        SELECT 
+            p.id, p.name, p.slug, p.description, 
+            p.category_id as "categoryId",
+            p.created_at as "createdAt",
+            c.name as category,
+            COALESCE(MIN(v.price), 0) as price,
+            CASE WHEN MIN(v.price) IS NOT NULL THEN (MIN(v.price) * 1.25) ELSE 0 END as "originalPrice",
+            COALESCE(SUM(v.stock_quantity), 0) as stock,
+            (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
+        FROM products p
+        JOIN categories c ON p.category_id = c.id
+        LEFT JOIN product_variants v ON p.id = v.product_id
+        GROUP BY p.id, c.name
+    `);
+    for (const p of res.rows) {
+        await esClient.index({ index: 'products', id: p.id, body: p });
+    }
+    console.log(`[SYNC] ${res.rows.length} products synced.`);
+}
+
 async function startWorker() {
-    console.log('Indexer Worker starting...');
-    let connected = false;
-    
-    while (!connected) {
+    console.log('[INIT] Indexer service starting...');
+    const pgClient = new Client({ connectionString: POSTGRES_URL });
+
+    while (true) {
         try {
-            await pgClient.connect().catch(e => { if(!e.message.includes('already connected')) throw e; });
-            console.log('Connected to Postgres');
-            
-            await initElasticsearch();
-
-            const connection = await amqp.connect(RABBITMQ_URL);
-            const channel = await connection.createChannel();
-
-            await channel.assertExchange(DLX_NAME, 'fanout', { durable: true });
-            await channel.assertQueue(DLQ_NAME, { durable: true });
-            await channel.bindQueue(DLQ_NAME, DLX_NAME, '');
-
-            await channel.assertExchange(EXCHANGE_NAME, 'fanout', { durable: true });
-            await channel.assertQueue(SYNC_QUEUE, {
-                durable: true,
-                arguments: { 'x-dead-letter-exchange': DLX_NAME }
-            });
-            await channel.bindQueue(SYNC_QUEUE, EXCHANGE_NAME, '');
-
-            console.log('Indexer listening...');
-
-            channel.consume(SYNC_QUEUE, async (msg) => {
-                if (!msg) return;
-                const event = JSON.parse(msg.content.toString());
-                const orderId = event.id;
-
-                try {
-                    const { body: alreadyProcessed } = await esClient.exists({ index: 'order_audit', id: orderId });
-                    if (alreadyProcessed) return channel.ack(msg);
-
-                    if (event.type === 'ORDER_PLACED') {
-                        await pgClient.query('BEGIN');
-                        await pgClient.query('UPDATE orders SET status = $1 WHERE id = $2', ['COMPLETED', orderId]);
-                        await pgClient.query('UPDATE product_variants SET stock_quantity = stock_quantity - $1 WHERE id = $2', [event.quantity, event.productId]);
-                        
-                        await esClient.update({
-                            index: 'products',
-                            id: event.productId,
-                            body: { 
-                                script: { 
-                                    source: "if (ctx._source.stock != null) { ctx._source.stock -= params.qty }", 
-                                    params: { qty: event.quantity } 
-                                } 
-                            }
-                        }).catch(e => console.error("ES Update Error:", e.message));
-
-                        await esClient.index({ index: 'order_audit', id: orderId, body: { processed_at: new Date() } });
-                        await pgClient.query('COMMIT');
-                    }
-                    channel.ack(msg);
-                } catch (err) {
-                    console.error(`[ERROR] Processing Order ${orderId}:`, err.message);
-                    await pgClient.query('ROLLBACK').catch(() => {});
-                    channel.nack(msg, false, true); 
-                }
-            });
-
-            connected = true;
-        } catch (error) {
-            console.error('Worker init failed, retrying in 5s...', error.message);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await pgClient.connect();
+            console.log('[INIT] Postgres connected.');
+            break;
+        } catch (err) {
+            console.error('[INIT] Postgres connection failed, retrying in 5s...', err.message);
+            await new Promise(r => setTimeout(r, 5000));
         }
+    }
+
+    try {
+        await initElasticsearch();
+        await syncCategories(pgClient);
+        await syncProducts(pgClient);
+
+        // RabbitMQ
+        const connection = await amqp.connect(RABBITMQ_URL);
+        const channel = await connection.createChannel();
+        console.log('[INIT] RabbitMQ connected.');
+
+        await channel.assertExchange(DLX_NAME, 'fanout', { durable: true });
+        await channel.assertQueue(DLQ_NAME, { durable: true });
+        await channel.bindQueue(DLQ_NAME, DLX_NAME, '');
+        await channel.assertExchange(EXCHANGE_NAME, 'fanout', { durable: true });
+        await channel.assertQueue(SYNC_QUEUE, { durable: true, arguments: { 'x-dead-letter-exchange': DLX_NAME } });
+        await channel.bindQueue(SYNC_QUEUE, EXCHANGE_NAME, '');
+
+        console.log('[INIT] Listening for events...');
+        channel.consume(SYNC_QUEUE, async (msg) => {
+            if (!msg) return;
+            const event = JSON.parse(msg.content.toString());
+            console.log(`[EVENT] Received ${event.type} for Order ${event.id}`);
+            // Logic for order processing...
+            channel.ack(msg);
+        });
+
+    } catch (err) {
+        console.error('[FATAL] Workflow Error:', err.message);
+        process.exit(1); // Docker will restart it
     }
 }
 

@@ -53,12 +53,19 @@ export class SearchService {
       }
     };
 
+    // Separating category filter to postFilter to keep aggregations accurate for other categories
+    const postFilter: any = {
+      bool: {
+        filter: []
+      }
+    };
+
     if (category) {
-      queryDSL.bool.filter.push({ term: { categoryId: category } });
+      postFilter.bool.filter.push({ term: { categoryId: category } });
     }
 
     if (minPrice || maxPrice) {
-      queryDSL.bool.filter.push({
+      postFilter.bool.filter.push({
         range: {
           price: {
             gte: minPrice ? parseFloat(minPrice) : 0,
@@ -69,29 +76,33 @@ export class SearchService {
     }
 
     if (hasDiscount === 'true') {
-      // Assuming originalPrice > price means discount. 
-      // In ES we might have a dedicated boolean or we check range
-      queryDSL.bool.filter.push({ exists: { field: 'originalPrice' } });
+      postFilter.bool.filter.push({ exists: { field: 'originalPrice' } });
     }
 
-    // --- 2. Sorting Logic ---
+    // --- 2. Sorting Logic (Matches earlier standard) ---
+    // ... rest of logic remains same ...
     let sort: any[] = [];
-    if (sortBy === 'price_asc') sort.push({ price: 'asc' });
-    else if (sortBy === 'price_desc') sort.push({ price: 'desc' });
+    if (sortBy === 'price-low') sort.push({ price: 'asc' });
+    else if (sortBy === 'price-high') sort.push({ price: 'desc' });
     else if (sortBy === 'newest') sort.push({ createdAt: 'desc' });
+    else if (sortBy === 'best-selling') sort.push({ stock: 'desc' });
     else sort.push({ _score: 'desc' });
 
     console.log('[ELASTICSEARCH] Query DSL:', JSON.stringify(queryDSL, null, 2));
-    console.log('[ELASTICSEARCH] Sort DSL:', JSON.stringify(sort, null, 2));
+    if (postFilter.bool.filter.length > 0) {
+      console.log('[ELASTICSEARCH] PostFilter DSL:', JSON.stringify(postFilter, null, 2));
+    }
 
-    // --- 3. Execute through Repository (Pass query and sort separately) ---
+    // --- 3. Execute through Repository ---
     try {
       const rawResult = await this.searchRepository.searchProducts(
         queryDSL,
         sort,
         from,
-        limitNum
+        limitNum,
+        postFilter.bool.filter.length > 0 ? postFilter : undefined
       );
+    // ... mapping ...
 
       // --- 4. Mapping Result to Clean DTOs ---
       const hits = rawResult?.body?.hits?.hits || [];

@@ -13,25 +13,30 @@ export class SearchRepository {
    * @param size  Limit
    * @param index ES Index
    */
-  public async searchProducts(query: any, sort: any[], from: number, size: number, index: string = 'products'): Promise<any> {
+  public async searchProducts(query: any, sort: any[], from: number, size: number, postFilter?: any, index: string = 'products'): Promise<any> {
     try {
-      return await esClient.search({
-        index,
-        body: { 
-          query, 
-          sort,
-          from, 
-          size,
-          // Aggregations to fix the 0-count category sidebar bug
-          aggs: {
-            categories: {
-              terms: {
-                field: 'categoryId',
-                size: 50
-              }
+      const body: any = {
+        query,
+        sort,
+        from,
+        size,
+        aggs: {
+          categories: {
+            terms: {
+              field: 'categoryId',
+              size: 50
             }
           }
         }
+      };
+
+      if (postFilter) {
+        body.post_filter = postFilter;
+      }
+
+      return await esClient.search({
+        index,
+        body
       });
     } catch (error: any) {
       console.error('[REPOSITORY] ES Error:', error.message);

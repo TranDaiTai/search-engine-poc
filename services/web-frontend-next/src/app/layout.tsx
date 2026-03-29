@@ -23,9 +23,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased bg-background text-foreground`}>
         <Providers>
           <div className="relative min-h-screen flex flex-col">
-            <React.Suspense fallback={null}>
-              <GlobalSearch />
-            </React.Suspense>
+           
             <main className="flex-grow">
               {children}
             </main>
