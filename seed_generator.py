@@ -46,9 +46,11 @@ def generate_sql():
             p_idx = random.randint(100, 999)
             pname = f"{adj} {ptype} {p_idx}"
             pid = str(uuid.uuid4())
+            short_id = pid.split('-')[0][:6]  # Use 6 chars of UUID for uniqueness
+            slug = f"{slugify(pname)}-{short_id}"
             desc = f"Description for {pname}. Optimized for search and performance test."
             
-            sql_lines.append(f"INSERT INTO products (id, name, description, category_id) VALUES ('{pid}', '{pname}', '{desc}', '{cid}');\n")
+            sql_lines.append(f"INSERT INTO products (id, name, slug, description, category_id) VALUES ('{pid}', '{pname}', '{slug}', '{desc}', '{cid}');\n")
 
             # Sinh Variants cho Product này
             for _ in range(NUM_VARIANTS_PER_PRODUCT):

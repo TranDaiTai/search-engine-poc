@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const axiosClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
+  baseURL: "/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -10,12 +10,7 @@ const axiosClient = axios.create({
 
 axiosClient.interceptors.request.use(
   (config) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("accessToken");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
+    // Trình duyệt tự động gửi cookie qua withCredentials: true
     return config;
   },
   (error) => Promise.reject(error)
@@ -27,9 +22,8 @@ axiosClient.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("accessToken");
-      }
+      // Xử lý khi token hết hạn hoặc không hợp lệ
+      console.warn("Session expired or unauthorized");
     }
     return Promise.reject(error);
   }

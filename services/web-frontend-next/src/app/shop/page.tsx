@@ -6,13 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { ShoppingBag, Search, X, ChevronLeft, ChevronRight, SlidersHorizontal, ChevronDown, Check, Loader2 } from "lucide-react";
-import { useState, useMemo, useEffect, useCallback, useTransition, useRef } from "react";
+import { Suspense, useState, useMemo, useEffect, useCallback, useTransition, useRef } from "react";
 import ProductCard from "@/components/product/ProductCard";
 import ProductSkeleton from "@/components/product/ProductSkeleton";
 import FilterSidebar from "@/components/product/FilterSidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function ShopPage() {
+function ShopContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -100,10 +100,11 @@ export default function ShopPage() {
   const rawData: any = productsData;
   const products: any[] = rawData?.products ?? (Array.isArray(rawData) ? rawData : []);
   const pagination = rawData?.pagination || null;
-  const totalPages = pagination?.totalPages || 1;
-  const totalItems = pagination?.totalItems || products.length;
-  const hasNext = pagination ? pagination.hasNext : products.length >= limit;
-  const hasPrev = pagination ? pagination.hasPrev : page > 1;
+  // API returns: { total, page, limit, pages }
+  const totalPages = pagination?.pages ?? 1;
+  const totalItems = pagination?.total ?? products.length;
+  const hasNext = pagination ? page < totalPages : products.length >= limit;
+  const hasPrev = page > 1;
 
   // --- Wrappers for state updates using useTransition ---
   const handleSetSearch = (val: string) => {
@@ -403,5 +404,13 @@ export default function ShopPage() {
 
       <Footer />
     </main>
+  );
+}
+
+export default function ShopPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50/50 flex items-center justify-center"><Loader2 className="w-8 h-8 text-accent animate-spin" /></div>}>
+      <ShopContent />
+    </Suspense>
   );
 }

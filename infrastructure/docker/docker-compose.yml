@@ -112,6 +112,8 @@ services:
     depends_on:
       - search-service
       - order-service
+      - product-service
+      - user-service
       - web-frontend
     networks:
       - shop-network
@@ -138,9 +140,12 @@ services:
       - REDIS_URL=redis://redis:6379
       - DB_URL=postgres://user:password@postgres:5432/orders_db
     depends_on:
-      - rabbitmq
-      - redis
-      - postgres
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - shop-network
 
@@ -154,9 +159,12 @@ services:
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672
       - POSTGRES_URL=postgres://user:password@postgres:5432/orders_db
     depends_on:
-      - elasticsearch
-      - rabbitmq
-      - postgres
+      elasticsearch:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - shop-network
 
@@ -182,7 +190,8 @@ services:
       - DATABASE_URL=postgresql://user:password@postgres:5432/orders_db
       - JWT_SECRET=your-secret-key
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - shop-network
 
@@ -194,7 +203,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/orders_db
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - shop-network
 

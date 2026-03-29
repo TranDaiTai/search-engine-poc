@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
     description TEXT,
     category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT true,
@@ -102,9 +103,9 @@ INSERT INTO categories (id, name, slug) VALUES
 ('22222222-2222-2222-2222-222222222222', 'Accessories', 'accessories');
 
 -- Thêm Products
-INSERT INTO products (id, name, description, category_id) VALUES 
-('33333333-3333-3333-3333-333333333333', 'iPhone 15 Pro', 'Flagship phone from Apple', '11111111-1111-1111-1111-111111111111'),
-('44444444-4444-4444-4444-444444444444', 'Sony WH-1000XM5', 'Noise cancelling headphones', '22222222-2222-2222-2222-222222222222');
+INSERT INTO products (id, name, slug, description, category_id) VALUES 
+('33333333-3333-3333-3333-333333333333', 'iPhone 15 Pro', 'iphone-15-pro-333333', 'Flagship phone from Apple', '11111111-1111-1111-1111-111111111111'),
+('44444444-4444-4444-4444-444444444444', 'Sony WH-1000XM5', 'sony-wh-1000xm5-444444', 'Noise cancelling headphones', '22222222-2222-2222-2222-222222222222');
 
 -- Thêm Variants (Gắn giá và kho vào đây)
 INSERT INTO product_variants (id, product_id, sku, price, stock_quantity, attributes) VALUES 

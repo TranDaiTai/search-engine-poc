@@ -16,7 +16,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   fetchMe: async () => {
     set({ isLoading: true });
     try {
-      const data = await authService.verify();
+      const data: any = await authService.verify();
       if (data?.user) {
         set({ user: data.user });
       } else {
@@ -31,10 +31,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: async (credentials: any) => {
     try {
-      const data = await authService.login(credentials);
-      if (data) {
-        const token = data.accessToken || data.token;
-        if (token) localStorage.setItem("accessToken", token);
+      const data: any = await authService.login(credentials);
+      if (data?.success) {
         set({ user: data.user });
         return true;
       }
@@ -44,9 +42,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  logout: () => {
-    authService.logout();
-    localStorage.removeItem("accessToken");
-    set({ user: null });
+  logout: async () => {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error("Logout error", err);
+    } finally {
+      set({ user: null });
+    }
   },
 }));
