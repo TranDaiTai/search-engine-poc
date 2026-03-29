@@ -15,79 +15,106 @@ const DLX_NAME = 'events_dlx';
 const DLQ_NAME = 'events_dlq';
 
 async function initElasticsearch() {
-    const indexName = 'products';
-    const auditIndex = 'order_audit';
+    console.log(`[INIT] Starting ES check...`);
     
-    console.log(`[INIT] Checking ES indices...`);
-    const { body: exists } = await esClient.indices.exists({ index: indexName });
-    
-    if (!exists) {
-        console.log(`[INIT] Creating '${indexName}' index...`);
-        await esClient.indices.create({
-            index: indexName,
-            body: {
-                settings: {
-                    analysis: {
-                        filter: {
-                            ngram_filter: {
-                                type: 'edge_ngram',
-                                min_gram: 2,
-                                max_gram: 20
-                            }
-                        },
-                        analyzer: {
-                            ngram_analyzer: {
-                                type: 'custom',
-                                tokenizer: 'standard',
-                                filter: ['lowercase', 'ngram_filter']
-                            }
+    try {
+        // --- 1. Products Index ---
+        const indexName = 'products';
+        const existsRes = await esClient.indices.exists({ index: indexName });
+        const exists = existsRes.body;
+        console.log(`[INIT] Index '${indexName}' exists: ${exists}`);
+
+        if (!exists) {
+            console.log(`[INIT] Creating '${indexName}'...`);
+            await esClient.indices.create({
+                index: indexName,
+                body: {
+                    settings: {
+                        analysis: {
+                            filter: { ngram_filter: { type: 'edge_ngram', min_gram: 2, max_gram: 20 } },
+                            analyzer: { ngram_analyzer: { type: 'custom', tokenizer: 'standard', filter: ['lowercase', 'ngram_filter'] } }
+                        }
+                    },
+                    mappings: {
+                        properties: {
+                            id: { type: 'keyword' },
+                            name: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
+                            slug: { type: 'keyword' },
+                            description: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
+                            price: { type: 'float' },
+                            stock: { type: 'integer' },
+                            category: { type: 'keyword' },
+                            categoryId: { type: 'keyword' },
+                            image: { type: 'keyword' },
+                            createdAt: { type: 'date' }
                         }
                     }
-                },
-                mappings: {
-                    properties: {
-                        id: { type: 'keyword' },
-                        name: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
-                        slug: { type: 'keyword' },
-                        description: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
-                        price: { type: 'float' },
-                        stock: { type: 'integer' },
-                        category: { type: 'keyword' },
-                        categoryId: { type: 'keyword' },
-                        image: { type: 'keyword' }
+                }
+            });
+
+            const result = await pgClient.query(`
+                SELECT 
+                    p.id, p.name, p.slug, p.description, p.category_id as "categoryId",
+                    p.created_at as "createdAt",
+                    c.name as category,
+                    MIN(v.price) as price,
+                    SUM(v.stock_quantity) as stock,
+                    (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
+                FROM products p
+                LEFT JOIN product_variants v ON p.id = v.product_id
+                LEFT JOIN categories c ON p.category_id = c.id
+                GROUP BY p.id, p.name, p.slug, p.description, p.category_id, p.created_at, c.name
+            `);
+            
+            console.log(`[INIT] Syncing ${result.rows.length} products...`);
+            for (const p of result.rows) {
+                await esClient.index({ index: indexName, id: p.id, body: p });
+            }
+        }
+
+        // --- 2. Categories Index ---
+        const categoriesIndex = 'categories';
+        const catExistsRes = await esClient.indices.exists({ index: categoriesIndex });
+        const catExists = catExistsRes.body;
+        console.log(`[INIT] Index '${categoriesIndex}' exists: ${catExists}`);
+
+        if (!catExists) {
+            console.log(`[INIT] Creating '${categoriesIndex}'...`);
+            await esClient.indices.create({
+                index: categoriesIndex,
+                body: {
+                    mappings: {
+                        properties: {
+                            id: { type: 'keyword' },
+                            name: { type: 'text' },
+                            slug: { type: 'keyword' },
+                            imageUrl: { type: 'keyword' },
+                            parentId: { type: 'keyword' },
+                            description: { type: 'text' }
+                        }
                     }
                 }
+            });
+
+            console.log(`[INIT] Fetching categories from Postgres...`);
+            const catResult = await pgClient.query(`SELECT id, name, slug, parent_id as "parentId", image_url as "imageUrl", description FROM categories`);
+            console.log(`[INIT] Syncing ${catResult.rows.length} categories...`);
+            for (const c of catResult.rows) {
+                await esClient.index({ index: categoriesIndex, id: c.id, body: c });
             }
-        });
-
-        console.log(`[INIT] Fetching data from Postgres...`);
-        // Thêm coalesce để đảm bảo không lỗi null, gom nhóm theo product
-        const result = await pgClient.query(`
-            SELECT 
-                p.id, p.name, p.slug, p.description, p.category_id as "categoryId",
-                c.name as category,
-                MIN(v.price) as price,
-                SUM(v.stock_quantity) as stock,
-                (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
-            FROM products p
-            LEFT JOIN product_variants v ON p.id = v.product_id
-            LEFT JOIN categories c ON p.category_id = c.id
-            GROUP BY p.id, p.name, p.slug, p.description, p.category_id, c.name
-        `);
-        
-        console.log(`[INIT] Syncing ${result.rows.length} rows to ES...`);
-        for (const p of result.rows) {
-            await esClient.index({ index: indexName, id: p.id, body: p });
         }
-        console.log(`[INIT] Elasticsearch populated successfully.`);
-    } else {
-        console.log(`[INIT] '${indexName}' index already exists. Skipping bulk raw import.`);
-    }
 
-    const { body: auditExists } = await esClient.indices.exists({ index: auditIndex });
-    if (!auditExists) {
-        console.log(`[INIT] Creating '${auditIndex}' index...`);
-        await esClient.indices.create({ index: auditIndex });
+        // --- 3. Audit Index ---
+        const auditIndex = 'order_audit';
+        const auditExistsRes = await esClient.indices.exists({ index: auditIndex });
+        if (!auditExistsRes.body) {
+            await esClient.indices.create({ index: auditIndex });
+        }
+        
+        console.log(`[INIT] ALL OK.`);
+    } catch (err) {
+        console.error(`[INIT ERROR]`, err);
+        throw err;
     }
 }
 
@@ -97,15 +124,8 @@ async function startWorker() {
     
     while (!connected) {
         try {
-            // Defensive PG Connect
-            try {
-                await pgClient.connect();
-                console.log('Connected to Postgres');
-            } catch (pgErr) {
-                if (!pgErr.message.includes('already been connected')) {
-                    throw pgErr;
-                }
-            }
+            await pgClient.connect().catch(e => { if(!e.message.includes('already connected')) throw e; });
+            console.log('Connected to Postgres');
             
             await initElasticsearch();
 
@@ -123,28 +143,22 @@ async function startWorker() {
             });
             await channel.bindQueue(SYNC_QUEUE, EXCHANGE_NAME, '');
 
-            console.log('Indexer Worker listening with Reliability enabled...');
+            console.log('Indexer listening...');
 
             channel.consume(SYNC_QUEUE, async (msg) => {
                 if (!msg) return;
                 const event = JSON.parse(msg.content.toString());
                 const orderId = event.id;
-                console.log(`[PROCESS] Received event: ${event.type} for Order ${orderId}`);
 
                 try {
                     const { body: alreadyProcessed } = await esClient.exists({ index: 'order_audit', id: orderId });
-                    if (alreadyProcessed) {
-                        console.warn(`[SKIP] Order ${orderId} already processed.`);
-                        return channel.ack(msg);
-                    }
+                    if (alreadyProcessed) return channel.ack(msg);
 
                     if (event.type === 'ORDER_PLACED') {
                         await pgClient.query('BEGIN');
                         await pgClient.query('UPDATE orders SET status = $1 WHERE id = $2', ['COMPLETED', orderId]);
                         await pgClient.query('UPDATE product_variants SET stock_quantity = stock_quantity - $1 WHERE id = $2', [event.quantity, event.productId]);
                         
-                        // We update the product document to decrement stock
-                        // The event contains productId, which matches ES document ID now
                         await esClient.update({
                             index: 'products',
                             id: event.productId,
@@ -158,20 +172,14 @@ async function startWorker() {
 
                         await esClient.index({ index: 'order_audit', id: orderId, body: { processed_at: new Date() } });
                         await pgClient.query('COMMIT');
-                        console.log(`[SUCCESS] Order ${orderId} synced.`);
                     }
                     channel.ack(msg);
                 } catch (err) {
                     console.error(`[ERROR] Processing Order ${orderId}:`, err.message);
                     await pgClient.query('ROLLBACK').catch(() => {});
-                    const deathCount = (msg.properties.headers['x-death'] || []).length;
-                    if (deathCount < 3) {
-                        channel.nack(msg, false, true); 
-                    } else {
-                        channel.nack(msg, false, false); 
-                    }
+                    channel.nack(msg, false, true); 
                 }
-            }, { noAck: false });
+            });
 
             connected = true;
         } catch (error) {

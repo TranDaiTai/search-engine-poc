@@ -18,14 +18,15 @@ function ShopContent() {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  // --- Filter States (Local) ---
-  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(searchParams.get("category"));
-  const [minPrice, setMinPrice] = useState<number>(Number(searchParams.get("minPrice")) || 0);
-  const [maxPrice, setMaxPrice] = useState<number>(Number(searchParams.get("maxPrice")) || 10000000);
-  const [status, setStatus] = useState<string | null>(searchParams.get("status"));
-  const [sortBy, setSortBy] = useState<string>(searchParams.get("sort") || "newest");
-  const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
+  // --- URL State (The Source of Truth) ---
+  const searchTerm = searchParams.get("q") || "";
+  const selectedCategory = searchParams.get("category");
+  const minPrice = Number(searchParams.get("minPrice")) || 0;
+  const maxPrice = Number(searchParams.get("maxPrice")) || 10000000;
+  const status = searchParams.get("status");
+  const sortBy = searchParams.get("sort") || "newest";
+  const page = Number(searchParams.get("page")) || 1;
+  
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -51,24 +52,34 @@ function ShopContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // --- URL Synchronization ---
-  const updateUrlParams = useCallback(() => {
-    const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (selectedCategory) params.set("category", selectedCategory);
-    if (minPrice > 0) params.set("minPrice", minPrice.toString());
-    if (maxPrice < 10000000) params.set("maxPrice", maxPrice.toString());
-    if (status) params.set("status", status);
-    if (sortBy !== "newest") params.set("sort", sortBy);
-    if (page > 1) params.set("page", page.toString());
+  // --- URL Synchronization Methods ---
+  const setUrlParam = useCallback((name: string, value: string | null) => {
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) params.set(name, value);
+      else params.delete(name);
+      
+      // Always reset page on filter change
+      if (name !== 'page') params.delete('page');
+      
+      router.push(`/shop?${params.toString()}`, { scroll: false });
+    });
+  }, [searchParams, router]);
 
-    const queryString = params.toString();
-    router.replace(`/shop${queryString ? `?${queryString}` : ""}`, { scroll: false });
-  }, [searchTerm, selectedCategory, minPrice, maxPrice, status, sortBy, page, router]);
+  const handleClearAll = () => {
+    startTransition(() => {
+      router.push('/shop', { scroll: false });
+      setIsMobileFilterOpen(false);
+    });
+  };
 
-  useEffect(() => {
-    updateUrlParams();
-  }, [updateUrlParams]);
+  const handleSetSearch = (val: string) => setUrlParam("q", val);
+  const handleSetCategory = (val: string | null) => setUrlParam("category", val);
+  const handleSetMinPrice = (val: number) => setUrlParam("minPrice", val.toString());
+  const handleSetMaxPrice = (val: number) => setUrlParam("maxPrice", val.toString());
+  const handleSetStatus = (val: string | null) => setUrlParam("status", val);
+  const handleSetSort = (val: string) => setUrlParam("sort", val);
+  const setPage = (p: number) => setUrlParam("page", p.toString());
 
   // --- Data Fetching ---
   const { data: categoriesData = [] } = useQuery({
@@ -82,7 +93,7 @@ function ShopContent() {
     const params = new URLSearchParams();
     params.append("page", page.toString());
     params.append("limit", limit.toString());
-    if (searchTerm) params.append("search", searchTerm);
+    if (searchTerm) params.append("q", searchTerm); // Use 'q' for search-service ES logic
     if (selectedCategory) params.append("category", selectedCategory);
     if (minPrice > 0) params.append("minPrice", minPrice.toString());
     if (maxPrice < 10000000) params.append("maxPrice", maxPrice.toString());
@@ -101,90 +112,52 @@ function ShopContent() {
   const rawData: any = productsData;
   const products: any[] = rawData?.products ?? (Array.isArray(rawData) ? rawData : []);
   const pagination = rawData?.pagination || null;
+  const aggregations = rawData?.aggregations || {}; // Dynamic counts from ES
+
   // API returns: { total, page, limit, pages }
   const totalPages = pagination?.pages ?? 1;
   const totalItems = pagination?.total ?? products.length;
   const hasNext = pagination ? page < totalPages : products.length >= limit;
   const hasPrev = page > 1;
 
-  // --- Wrappers for state updates using useTransition ---
-  const handleSetSearch = (val: string) => {
-    startTransition(() => {
-      setSearchTerm(val);
-      setPage(1);
-    });
-  };
-
-  const handleSetCategory = (val: string | null) => {
-    startTransition(() => {
-      setSelectedCategory(val);
-      setPage(1);
-    });
-  };
-
-  const handleSetMaxPrice = (val: number) => {
-    startTransition(() => {
-      setMaxPrice(val);
-      setPage(1);
-    });
-  };
-
-  const handleSetMinPrice = (val: number) => {
-    startTransition(() => {
-      setMinPrice(val);
-      setPage(1);
-    });
-  };
-
-  const handleSetStatus = (val: string | null) => {
-    startTransition(() => {
-      setStatus(val);
-      setPage(1);
-    });
-  };
-
-  const handleSetSort = (val: string) => {
-    startTransition(() => {
-      setSortBy(val);
-      setPage(1);
-    });
-  };
-
-  const handleClearAll = () => {
-    startTransition(() => {
-      setSearchTerm("");
-      setSelectedCategory(null);
-      setMinPrice(0);
-      setMaxPrice(10000000);
-      setStatus(null);
-      setSortBy("newest");
-      setPage(1);
-      setIsMobileFilterOpen(false);
-    });
-  };
+  // --- Merge Category Counts from Aggregations (Recursive) ---
+  const categoriesWithCounts = useMemo(() => {
+    const updateCounts = (cats: any[]): any[] => {
+      return cats.map((cat: any) => ({
+        ...cat,
+        _count: {
+          ...cat._count,
+          products: aggregations[cat.id] || 0
+        },
+        children: cat.children ? updateCounts(cat.children) : []
+      }));
+    };
+    return updateCounts(categories);
+  }, [categories, aggregations]);
 
   return (
     <main className="min-h-screen bg-gray-50/50">
       <Navbar />
-      <GlobalSearch />
-
-      <div className="max-w-7xl mx-auto px-6 pt-40 pb-20">
+      
+      <div className="max-w-7xl mx-auto px-6 pt-20 pb-20">
         <div className="flex flex-col lg:flex-row gap-16">
 
           {/* Side Filter - Desktop (Sticky) */}
           <aside className="hidden lg:block w-72 shrink-0 sticky top-32 h-fit max-h-[calc(100vh-160px)] overflow-y-auto pr-4 custom-scrollbar">
             <FilterSidebar
-              searchTerm={searchTerm}
-              setSearchTerm={handleSetSearch}
+              categories={categoriesWithCounts}
               selectedCategory={selectedCategory}
-              setSelectedCategory={handleSetCategory}
+              onCategoryChange={handleSetCategory}
               minPrice={minPrice}
-              setMinPrice={handleSetMinPrice}
               maxPrice={maxPrice}
-              setMaxPrice={handleSetMaxPrice}
+              onPriceChange={(min: number, max: number) => {
+                handleSetMinPrice(min);
+                handleSetMaxPrice(max);
+              }}
               status={status}
-              setStatus={handleSetStatus}
-              categories={categories}
+              onStatusChange={handleSetStatus}
+              searchTerm={searchTerm}
+              onSearchChange={handleSetSearch}
               productCount={products.length}
               handleClearAll={handleClearAll}
               setPage={setPage}
@@ -192,7 +165,7 @@ function ShopContent() {
           </aside>
 
           {/* Main Content */}
-          <div className="flex-1 space-y-12 min-h-[1200px]">
+          <div className="flex-1 space-y-12 min-h-[1200px]" key={queryParams}>
 
             {/* Header / Top Toolbar — relative z-10 so dropdown floats above product grid */}
             <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8 animate-slideUp">
@@ -376,17 +349,19 @@ function ShopContent() {
                 </button>
               </div>
               <FilterSidebar
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
+                categories={categoriesWithCounts}
                 selectedCategory={selectedCategory}
-                setSelectedCategory={setSelectedCategory}
+                onCategoryChange={handleSetCategory}
                 minPrice={minPrice}
-                setMinPrice={setMinPrice}
                 maxPrice={maxPrice}
-                setMaxPrice={setMaxPrice}
+                onPriceChange={(min: number, max: number) => {
+                  handleSetMinPrice(min);
+                  handleSetMaxPrice(max);
+                }}
                 status={status}
-                setStatus={setStatus}
-                categories={categories}
+                onStatusChange={handleSetStatus}
+                searchTerm={searchTerm}
+                onSearchChange={handleSetSearch}
                 productCount={products.length}
                 handleClearAll={handleClearAll}
                 setPage={setPage}

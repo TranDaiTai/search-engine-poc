@@ -3,16 +3,26 @@ import axiosClient from "@/lib/api/axiosClient";
 export const productService = {
   // Returns { products, pagination } from search-service via ES
   getAllProducts: async (params?: string) => {
-    // Map Frontend param (search=...) to ES param (q=...)
-    const queryParams = params ? params.replace('search=', 'q=') : '';
-    const res: any = await axiosClient.get(`/search/?${queryParams}`);
-    const root = res.data || res;
-    
-    // Search-service now returns { products: [], pagination: {} } properly
-    if (root.products && Array.isArray(root.products)) {
-      return { products: root.products, pagination: root.pagination };
+    try {
+      // Ensure params string is clean and doesn't have leading/trailing slashes
+      const cleanParams = params ? params.replace(/^\/+|\/+$/g, "") : "";
+      const queryString = cleanParams ? `?${cleanParams}` : "";
+      
+      const res: any = await axiosClient.get(`/search${queryString}`);
+      const root = res.data || res;
+      
+      if (root.products && Array.isArray(root.products)) {
+        return { 
+          products: root.products, 
+          pagination: root.pagination, 
+          aggregations: root.aggregations || {} 
+        };
+      }
+      return { products: [], pagination: null, aggregations: {} };
+    } catch (error: any) {
+      console.error('[SEARCH-SERVICE] API Error:', error?.response?.status, error.message);
+      return { products: [], pagination: null, aggregations: {} };
     }
-    return { products: [], pagination: null };
   },
 
   getProductDetails: async (slug: string) => {

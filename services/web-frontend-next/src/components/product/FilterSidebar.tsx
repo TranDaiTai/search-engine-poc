@@ -57,15 +57,14 @@ const QUICK_PRICE_RANGES = [
 
 interface FilterSidebarProps {
   searchTerm: string;
-  setSearchTerm: (val: string) => void;
+  onSearchChange: (val: string) => void;
   selectedCategory: string | null;
-  setSelectedCategory: (val: string | null) => void;
+  onCategoryChange: (val: string | null) => void;
   minPrice: number;
-  setMinPrice: (val: number) => void;
   maxPrice: number;
-  setMaxPrice: (val: number) => void;
+  onPriceChange: (min: number, max: number) => void;
   status: string | null;
-  setStatus: (val: string | null) => void;
+  onStatusChange: (val: string | null) => void;
   categories: any[];
   productCount: number;
   handleClearAll: () => void;
@@ -74,15 +73,14 @@ interface FilterSidebarProps {
 
 export default function FilterSidebar({
   searchTerm,
-  setSearchTerm,
+  onSearchChange,
   selectedCategory,
-  setSelectedCategory,
+  onCategoryChange,
   minPrice,
-  setMinPrice,
   maxPrice,
-  setMaxPrice,
+  onPriceChange,
   status,
-  setStatus,
+  onStatusChange,
   categories,
   productCount,
   handleClearAll,
@@ -137,21 +135,20 @@ export default function FilterSidebar({
   }, []);
 
   const applyQuickRange = (min: number, max: number) => {
-    setMinPrice(min);
-    setMaxPrice(max);
+    onPriceChange(min, max);
     setPage(1);
   };
 
   const handleMinInputBlur = () => {
     const val = Math.min(Number(minInput) || 0, maxPrice - 500000);
-    setMinPrice(val);
+    onPriceChange(val, maxPrice);
     setMinInput(val.toString());
     setPage(1);
   };
 
   const handleMaxInputBlur = () => {
     const val = Math.max(Number(maxInput) || 10000000, minPrice + 500000);
-    setMaxPrice(Math.min(val, 10000000));
+    onPriceChange(minPrice, Math.min(val, 10000000));
     setMaxInput(Math.min(val, 10000000).toString());
     setPage(1);
   };
@@ -165,7 +162,7 @@ export default function FilterSidebar({
       <AccordionSection id="categories" title="Danh mục" isOpen={openSections.includes("categories")} onToggle={toggleSection}>
         <div className="flex flex-col gap-1.5">
           <button
-            onClick={() => { setSelectedCategory(null); setPage(1); }}
+            onClick={() => { onCategoryChange(null); setPage(1); }}
             className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
               selectedCategory === null
                 ? 'bg-primary text-white shadow-lg shadow-primary/20'
@@ -178,20 +175,41 @@ export default function FilterSidebar({
             </span>
           </button>
           {categories.map((cat: any) => (
-            <button
-              key={cat.id}
-              onClick={() => { setSelectedCategory(cat.id.toString()); setPage(1); }}
-              className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
-                selectedCategory === cat.id.toString()
-                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                  : 'bg-gray-50 text-primary/70 hover:bg-gray-100 hover:text-primary'
-              }`}
-            >
-              <span>{cat.name}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === cat.id.toString() ? 'bg-white/20' : 'bg-gray-200'}`}>
-                {cat._count?.products || 0}
-              </span>
-            </button>
+            <div key={cat.id} className="space-y-1">
+              <button
+                onClick={() => { onCategoryChange(cat.id.toString()); setPage(1); }}
+                className={`flex items-center justify-between w-full px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all ${
+                  selectedCategory === cat.id.toString()
+                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                    : 'bg-gray-50 text-primary/70 hover:bg-gray-100 hover:text-primary'
+                }`}
+              >
+                <span>{cat.name}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${selectedCategory === cat.id.toString() ? 'bg-white/20' : 'bg-gray-200'}`}>
+                  {cat._count?.products || 0}
+                </span>
+              </button>
+              
+              {/* Nested children (Subcategories) — Always show if product counts exist in aggregations */}
+              {cat.children && cat.children.length > 0 && (
+                <div className="pl-4 space-y-1 mt-1">
+                  {cat.children.map((sub: any) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => { onCategoryChange(sub.id.toString()); setPage(1); }}
+                      className={`flex items-center justify-between w-full px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${
+                        selectedCategory === sub.id.toString()
+                          ? 'bg-accent text-white shadow-md shadow-accent/20'
+                          : 'bg-transparent text-primary/50 hover:bg-gray-50 hover:text-primary'
+                      }`}
+                    >
+                      <span className="truncate pr-2">{sub.name}</span>
+                      <span className="opacity-60 whitespace-nowrap">{sub._count?.products || 0}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </AccordionSection>
@@ -277,7 +295,7 @@ export default function FilterSidebar({
                 }}
                 onPointerUp={(e) => {
                   const val = Math.min(Number((e.target as HTMLInputElement).value), draftMaxRef.current - 500000);
-                  setMinPrice(val);
+                  onPriceChange(val, draftMaxRef.current);
                   setPage(1);
                 }}
                 style={{ zIndex: minPrice >= maxPrice - 500000 ? 5 : 3 }}
@@ -300,7 +318,7 @@ export default function FilterSidebar({
                 }}
                 onPointerUp={(e) => {
                   const val = Math.max(Number((e.target as HTMLInputElement).value), draftMinRef.current + 500000);
-                  setMaxPrice(val);
+                  onPriceChange(draftMinRef.current, val);
                   setPage(1);
                 }}
                 style={{ zIndex: maxPrice <= minPrice + 500000 ? 5 : 4 }}
@@ -374,7 +392,7 @@ export default function FilterSidebar({
           ].map((s) => (
             <button
               key={s.id}
-              onClick={() => { setStatus(status === s.id ? null : s.id); setPage(1); }}
+              onClick={() => { onStatusChange(status === s.id ? null : s.id); setPage(1); }}
               className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all gap-1.5 ${
                 status === s.id
                   ? 'border-accent bg-accent/5 text-accent shadow-md'

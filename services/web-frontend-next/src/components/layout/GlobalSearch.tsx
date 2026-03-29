@@ -4,15 +4,33 @@ import { useState, useRef, useEffect } from "react";
 import { Search, X, Loader2, ArrowRight, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSuggestions, Suggestion } from "@/hooks/useSuggestions";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 export default function GlobalSearch() {
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") || "";
+
+  const [query, setQuery] = useState(urlQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(urlQuery);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const { suggestions, isLoading } = useSuggestions(query);
+  
+  // Debounce query for suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { suggestions, isLoading } = useSuggestions(debouncedQuery);
+
+  // Sync with URL changes (e.g. going back/forward or clicking Navbar)
+  useEffect(() => {
+    setQuery(urlQuery);
+  }, [urlQuery]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -27,7 +45,7 @@ export default function GlobalSearch() {
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (query.trim()) {
-      router.push(`/shop?search=${encodeURIComponent(query)}`);
+      router.push(`/shop?q=${encodeURIComponent(query)}`);
       setIsOpen(false);
     }
   };
@@ -52,9 +70,12 @@ export default function GlobalSearch() {
             <div className={`relative flex items-center transition-all duration-500 rounded-2xl border-2 ${
                 isOpen ? 'bg-white border-accent shadow-2xl shadow-accent/10' : 'bg-white/80 border-transparent shadow-sm'
               }`}>
-              <div className="pl-6 text-primary/40">
-                <Search className={`w-6 h-6 transition-colors ${isOpen ? 'text-accent' : ''}`} />
-              </div>
+              <button
+                type="submit"
+                className="pl-6 text-primary/40 hover:text-accent transition-colors outline-none"
+              >
+                <Search className={`w-6 h-6 ${isOpen ? 'text-accent' : ''}`} />
+              </button>
               
               <input
                 type="text"
@@ -103,7 +124,7 @@ export default function GlobalSearch() {
                 <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50 mx-2 mt-2 rounded-2xl">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-primary/40">Gợi ý sản phẩm ({suggestions.length})</span>
                   {suggestions.length > 0 && (
-                     <button onClick={handleSearch} className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1 hover:underline">
+                     <button onClick={() => handleSearch()} className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1 hover:underline">
                         Xem tất cả <ArrowRight className="w-3 h-3" />
                      </button>
                   )}

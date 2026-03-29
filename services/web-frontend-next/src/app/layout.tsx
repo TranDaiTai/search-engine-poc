@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/common/Providers";
+import GlobalSearch from "@/components/layout/GlobalSearch";
+import React from "react";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -20,7 +22,14 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} ${outfit.variable} font-sans antialiased bg-background text-foreground`}>
         <Providers>
-          {children}
+          <div className="relative min-h-screen flex flex-col">
+            <React.Suspense fallback={null}>
+              <GlobalSearch />
+            </React.Suspense>
+            <main className="flex-grow">
+              {children}
+            </main>
+          </div>
         </Providers>
       </body>
     </html>
