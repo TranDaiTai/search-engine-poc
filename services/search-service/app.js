@@ -16,10 +16,10 @@ const breakerOptions = {
     resetTimeout: 5000     // Try again after 5s
 };
 
-const searchFromES = async (queryBody) => {
+const searchFromES = async (queryBody, fromParam, sizeParam) => {
     return await esClient.search({
         index: 'products',
-        body: { query: queryBody }
+        body: { query: queryBody, from: fromParam, size: sizeParam }
     });
 };
 
@@ -40,62 +40,137 @@ breaker.fallback(() => {
     };
 });
 
+/**
+ * Executes a suggestions query against ES.
+ * Uses the name field which has edge_ngram analyzer.
+ */
+const getSuggestionsFromES = async (q) => {
+    return await esClient.search({
+        index: 'products',
+        body: {
+            size: 8,
+            query: {
+                match: {
+                    name: {
+                        query: q,
+                        operator: 'and'
+                    }
+                }
+            },
+            _source: ['id', 'name', 'slug', 'image', 'price']
+        }
+    });
+};
+
+const suggestionsBreaker = new CircuitBreaker(getSuggestionsFromES, breakerOptions);
+suggestionsBreaker.fallback(() => ({ body: { hits: { hits: [] } } }));
+
+app.get('/search/suggestions', async (req, res) => {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ results: [] });
+
+    console.log(`[SUGGEST] Query: ${q}`);
+    try {
+        const result = await suggestionsBreaker.fire(q);
+        const suggestions = result.body.hits.hits.map(hit => ({
+            id: hit._source.id,
+            name: hit._source.name,
+            slug: hit._source.slug,
+            image: hit._source.image,
+            price: hit._source.price
+        }));
+
+        res.json({ results: suggestions });
+    } catch (error) {
+        console.error('[SUGGEST] Error:', error.message);
+        res.json({ results: [] });
+    }
+});
+
 app.get('/search', async (req, res) => {
-    const { q, category, minPrice, maxPrice } = req.query;
+    const { q, category, minPrice, maxPrice, page, limit } = req.query;
 
-    if (!q) return res.status(400).json({ error: 'Query parameter "q" is required' });
+    const searchTerm = q || '*';
+    const pageNum = parseInt(page || '1');
+    const limitNum = parseInt(limit || '12');
+    const from = (pageNum - 1) * limitNum;
 
-    // --- 1. Advanced Query DSL with Boosting & Fuzziness ---
+    console.log(`[SEARCH] Term: ${searchTerm}, Category: ${category}, Page: ${pageNum}`);
+
     let queryBody = {
         bool: {
-            must: q === '*' ? [{ match_all: {} }] : [
+            must: searchTerm === '*' ? [{ match_all: {} }] : [
                 {
                     multi_match: {
-                        query: q,
+                        query: searchTerm,
                         fields: ['name^3', 'description', 'category^2'],
-                        fuzziness: 'AUTO',
-                        prefix_length: 2
+                        fuzziness: 'AUTO'
                     }
                 }
             ],
-            filter: [] // 2. Using Filters for performance (caching)
+            filter: []
         }
     };
 
     if (category) {
-        queryBody.bool.filter.push({ term: { category: category } });
+        queryBody.bool.filter.push({ term: { categoryId: category } });
     }
 
     if (minPrice || maxPrice) {
         queryBody.bool.filter.push({
             range: {
                 price: {
-                    gte: minPrice || 0,
-                    lte: maxPrice || 999999
+                    gte: minPrice ? parseFloat(minPrice) : 0,
+                    lte: maxPrice ? parseFloat(maxPrice) : 999999
                 }
             }
         });
     }
 
     try {
-        // --- 3. Execute with Circuit Breaker ---
-        const result = await breaker.fire(queryBody);
+        const result = await breaker.fire(queryBody, from, limitNum);
+        
+        const totalItems = result.body.hits.total.value;
+        const totalPages = Math.ceil(totalItems / limitNum);
 
-        const products = result.body.hits.hits.map(hit => ({
-            id: hit._id,
-            ...hit._source,
-            score: hit._score || 0
-        }));
+        const products = result.body.hits.hits.map(hit => {
+            const minPriceVal = parseFloat(hit._source.price) || 0;
+            return {
+                id: hit._id,
+                name: hit._source.name,
+                slug: hit._source.slug,
+                description: hit._source.description,
+                categoryId: hit._source.categoryId,
+                category: { name: hit._source.category },
+                price: minPriceVal,
+                originalPrice: minPriceVal * 1.2,
+                variants: [{ price: minPriceVal }],
+                images: hit._source.image ? [{ imageUrl: hit._source.image }] : [],
+                score: hit._score || 0
+            };
+        });
 
         res.json({
             source: products[0]?.id.startsWith('fallback') ? 'cache/fallback' : 'elasticsearch',
-            count: products.length,
-            results: products
+            products: products,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total: totalItems,
+                pages: totalPages
+            }
         });
     } catch (error) {
-        console.error('Search failure:', error.message);
-        res.status(500).json({ error: 'Search failed after fallback attempts.' });
+        console.error('[SEARCH] Error:', error.message);
+        res.status(500).json({ 
+            error: 'Search failed.',
+            details: error.message
+        });
     }
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'UP', service: 'search-service' });
 });
 
 app.listen(port, () => {

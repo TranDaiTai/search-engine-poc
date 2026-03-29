@@ -161,14 +161,6 @@ export default function FilterSidebar({
 
   return (
     <div className="space-y-0">
-      {/* Search */}
-      <AccordionSection id="search" title="Tìm kiếm" isOpen={openSections.includes("search")} onToggle={toggleSection}>
-        <SearchInput
-          initialValue={searchTerm}
-          onSearch={(val) => { setSearchTerm(val); setPage(1); }}
-        />
-      </AccordionSection>
-
       {/* Categories */}
       <AccordionSection id="categories" title="Danh mục" isOpen={openSections.includes("categories")} onToggle={toggleSection}>
         <div className="flex flex-col gap-1.5">

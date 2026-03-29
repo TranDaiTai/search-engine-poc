@@ -26,34 +26,62 @@ async function initElasticsearch() {
         await esClient.indices.create({
             index: indexName,
             body: {
+                settings: {
+                    analysis: {
+                        filter: {
+                            ngram_filter: {
+                                type: 'edge_ngram',
+                                min_gram: 2,
+                                max_gram: 20
+                            }
+                        },
+                        analyzer: {
+                            ngram_analyzer: {
+                                type: 'custom',
+                                tokenizer: 'standard',
+                                filter: ['lowercase', 'ngram_filter']
+                            }
+                        }
+                    }
+                },
                 mappings: {
                     properties: {
                         id: { type: 'keyword' },
-                        name: { type: 'text', analyzer: 'standard' },
-                        description: { type: 'text' },
+                        name: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
+                        slug: { type: 'keyword' },
+                        description: { type: 'text', analyzer: 'ngram_analyzer', search_analyzer: 'standard' },
                         price: { type: 'float' },
                         stock: { type: 'integer' },
                         category: { type: 'keyword' },
-                        sku: { type: 'keyword' }
+                        categoryId: { type: 'keyword' },
+                        image: { type: 'keyword' }
                     }
                 }
             }
         });
 
         console.log(`[INIT] Fetching data from Postgres...`);
+        // Thêm coalesce để đảm bảo không lỗi null, gom nhóm theo product
         const result = await pgClient.query(`
-            SELECT v.id, v.sku, v.price, v.stock_quantity as stock, p.name, p.description, c.name as category
-            FROM product_variants v
-            JOIN products p ON v.product_id = p.id
-            JOIN categories c ON p.category_id = c.id
+            SELECT 
+                p.id, p.name, p.slug, p.description, p.category_id as "categoryId",
+                c.name as category,
+                MIN(v.price) as price,
+                SUM(v.stock_quantity) as stock,
+                (SELECT image_url FROM product_images WHERE product_id = p.id ORDER BY position ASC LIMIT 1) as image
+            FROM products p
+            LEFT JOIN product_variants v ON p.id = v.product_id
+            LEFT JOIN categories c ON p.category_id = c.id
+            GROUP BY p.id, p.name, p.slug, p.description, p.category_id, c.name
         `);
+        
         console.log(`[INIT] Syncing ${result.rows.length} rows to ES...`);
         for (const p of result.rows) {
             await esClient.index({ index: indexName, id: p.id, body: p });
         }
         console.log(`[INIT] Elasticsearch populated successfully.`);
     } else {
-        console.log(`[INIT] '${indexName}' index already exists.`);
+        console.log(`[INIT] '${indexName}' index already exists. Skipping bulk raw import.`);
     }
 
     const { body: auditExists } = await esClient.indices.exists({ index: auditIndex });
@@ -115,6 +143,8 @@ async function startWorker() {
                         await pgClient.query('UPDATE orders SET status = $1 WHERE id = $2', ['COMPLETED', orderId]);
                         await pgClient.query('UPDATE product_variants SET stock_quantity = stock_quantity - $1 WHERE id = $2', [event.quantity, event.productId]);
                         
+                        // We update the product document to decrement stock
+                        // The event contains productId, which matches ES document ID now
                         await esClient.update({
                             index: 'products',
                             id: event.productId,
@@ -124,7 +154,7 @@ async function startWorker() {
                                     params: { qty: event.quantity } 
                                 } 
                             }
-                        });
+                        }).catch(e => console.error("ES Update Error:", e.message));
 
                         await esClient.index({ index: 'order_audit', id: orderId, body: { processed_at: new Date() } });
                         await pgClient.query('COMMIT');

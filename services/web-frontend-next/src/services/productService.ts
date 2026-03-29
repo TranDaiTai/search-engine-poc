@@ -1,17 +1,17 @@
 import axiosClient from "@/lib/api/axiosClient";
 
 export const productService = {
-  // Returns { products, pagination } or just products[]
+  // Returns { products, pagination } from search-service via ES
   getAllProducts: async (params?: string) => {
-    const res: any = await axiosClient.get(`/products?${params || ""}`);
+    // Map Frontend param (search=...) to ES param (q=...)
+    const queryParams = params ? params.replace('search=', 'q=') : '';
+    const res: any = await axiosClient.get(`/search/?${queryParams}`);
     const root = res.data || res;
-    // New structure: root.products + root.pagination
+    
+    // Search-service now returns { products: [], pagination: {} } properly
     if (root.products && Array.isArray(root.products)) {
       return { products: root.products, pagination: root.pagination };
     }
-    // Legacy fallback (product singular or direct array)
-    if (root.product && Array.isArray(root.product)) return { products: root.product, pagination: null };
-    if (Array.isArray(root)) return { products: root, pagination: null };
     return { products: [], pagination: null };
   },
 

@@ -83,10 +83,6 @@ export default function Navbar() {
 
         {/* Actions */}
         <div className="flex items-center gap-6">
-          <button className="p-2 text-primary/60 hover:text-accent cursor-pointer transition-colors">
-            <Search className="w-5 h-5" />
-          </button>
-          
           <Link href="/cart" className="relative p-2 text-primary/60 hover:text-accent cursor-pointer transition-colors">
             <ShoppingCart className="w-5 h-5" />
             {itemCount > 0 && (

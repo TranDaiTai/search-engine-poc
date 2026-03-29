@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/productService";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
+import GlobalSearch from "@/components/layout/GlobalSearch";
 import Footer from "@/components/layout/Footer";
 import { ShoppingBag, Search, X, ChevronLeft, ChevronRight, SlidersHorizontal, ChevronDown, Check, Loader2 } from "lucide-react";
 import { Suspense, useState, useMemo, useEffect, useCallback, useTransition, useRef } from "react";
@@ -165,6 +166,7 @@ function ShopContent() {
   return (
     <main className="min-h-screen bg-gray-50/50">
       <Navbar />
+      <GlobalSearch />
 
       <div className="max-w-7xl mx-auto px-6 pt-40 pb-20">
         <div className="flex flex-col lg:flex-row gap-16">
