@@ -1,6 +1,28 @@
 -- Khởi tạo Extension cho UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- 0. Bảng Quyền và Người dùng (Auth)
+CREATE TABLE IF NOT EXISTS roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    phone VARCHAR(20),
+    avatar_url TEXT,
+    points INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 1. Bảng Danh mục sản phẩm (Phân cấp cha-con)
 CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -32,7 +54,17 @@ CREATE TABLE IF NOT EXISTS product_variants (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Bảng Đơn hàng
+-- 4. Bảng Hình ảnh sản phẩm
+CREATE TABLE IF NOT EXISTS product_images (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    image_url TEXT NOT NULL,
+    is_main BOOLEAN DEFAULT false,
+    position INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Bảng Đơn hàng
 CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     customer_name VARCHAR(255),
@@ -78,3 +110,16 @@ INSERT INTO products (id, name, description, category_id) VALUES
 INSERT INTO product_variants (id, product_id, sku, price, stock_quantity, attributes) VALUES 
 ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333', 'IPHONE-15-BLU-256', 999.00, 10, '{"color": "Titanium Blue", "storage": "256GB"}'),
 ('66666666-6666-6666-6666-666666666666', '44444444-4444-4444-4444-444444444444', 'SONY-XM5-BLK', 349.00, 15, '{"color": "Black"}');
+
+INSERT INTO roles (id, name, description) VALUES 
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'ADMIN', 'Quản trị viên hệ thống'),
+('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'USER', 'Người dùng thông thường')
+ON CONFLICT (name) DO NOTHING;
+
+-- Thêm Users mẫu
+-- Mật khẩu mặc định: admin123 (nếu hash là $2b$10$...) 
+-- Ở đây ta cứ để pass thô hoặc hash mẫu. Giả sử user-service dùng bcrypt.
+INSERT INTO users (id, role_id, username, email, password_hash, full_name, points) VALUES 
+('cccccccc-cccc-cccc-cccc-cccccccccccc', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'admin', 'admin@ecomarket.com', '$2a$10$ltf2hVkw8AHrlMelH67.IusxFTRajdLbdgKQcqaVjzV/CQWIjOssm', 'Hệ Thống Admin', 9999),
+('dddddddd-dddd-dddd-dddd-dddddddddddd', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'user1', 'user1@gmail.com', '$2a$10$ltf2hVkw8AHrlMelH67.IusxFTRajdLbdgKQcqaVjzV/CQWIjOssm', 'Nguyên Văn A', 150)
+ON CONFLICT (username) DO NOTHING;

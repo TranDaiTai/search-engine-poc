@@ -86,6 +86,8 @@ services:
       - "80:80"
     volumes:
       - ../nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+    environment:
+      - JWT_SECRET=your-secret-key
     depends_on:
       - search-service
       - order-service
@@ -139,11 +141,39 @@ services:
 
   # Web Frontend (UI)
   web-frontend:
-    build: ../../services/web-frontend-next
+    build: 
+      context: ../../services/web-frontend-next
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost/api
     container_name: web-frontend-demo
     restart: unless-stopped
     ports:
       - "3000:3000"
+    networks:
+      - shop-network
+
+  # User & Authentication Service
+  user-service:
+    build: ../../services/user-service
+    container_name: user-service-demo
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/orders_db
+      - JWT_SECRET=your-secret-key
+    depends_on:
+      - postgres
+    networks:
+      - shop-network
+
+  # Product & Catalog Service
+  product-service:
+    build: ../../services/product-service
+    container_name: product-service-demo
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/orders_db
+    depends_on:
+      - postgres
     networks:
       - shop-network
 
