@@ -4,7 +4,6 @@ import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion"
 import Link from "next/link";
 import { ArrowRight, Sparkles, ShieldCheck, Zap, ShoppingBag, ChevronRight, ChevronLeft, Leaf, Star } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
-import GlobalSearch from "@/components/layout/GlobalSearch";
 import Footer from "@/components/layout/Footer";
 import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/productService";
