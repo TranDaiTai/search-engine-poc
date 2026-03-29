@@ -24,6 +24,7 @@ async function initElasticsearch() {
             name: productIndex, 
             body: {
                 settings: {
+                    max_ngram_diff: 13,
                     analysis: {
                         analyzer: {
                             ngram_analyzer: { type: 'custom', tokenizer: 'ngram_tokenizer', filter: ['lowercase'] }
@@ -118,6 +119,18 @@ async function startWorker() {
             break;
         } catch (err) {
             console.error('[INIT] Postgres connection failed, retrying in 5s...', err.message);
+            await new Promise(r => setTimeout(r, 5000));
+        }
+    }
+
+    // Retry until Elasticsearch is ready
+    while (true) {
+        try {
+            await esClient.ping();
+            console.log('[INIT] Elasticsearch connected.');
+            break;
+        } catch (err) {
+            console.error('[INIT] Elasticsearch not ready, retrying in 5s...', err.message);
             await new Promise(r => setTimeout(r, 5000));
         }
     }

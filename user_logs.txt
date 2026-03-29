@@ -1,0 +1,7 @@
+
+> user-service@1.0.0 start
+> node dist/main.js
+
+--- USER-SERVICE-STARTING ---
+--- USER-SERVICE: DATABASE CONNECTED ---
+User service listening at http://0.0.0.0:3000
