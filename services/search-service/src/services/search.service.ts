@@ -126,8 +126,10 @@ export class SearchService {
           category: { name: source.category },
           price: minPriceVal,
           originalPrice: source.originalPrice || (minPriceVal * 1.2),
+          stock: parseInt(source.stock) || 0,
           variants: [{ price: minPriceVal }],
           images: source.image ? [{ imageUrl: source.image }] : [],
+          image: source.image || null,
           score: hit._score || 0
         };
       });

@@ -232,12 +232,12 @@ export default function ProductCard({ product, index }: { product: any; index: n
           <div className="space-y-0.5">
             <p className="text-lg md:text-xl font-black text-primary tracking-tighter">
               {allPrices.length > 1
-                ? `Từ ${formatCurrency(minPrice)}`
-                : formatCurrency(minPrice)}
+                ? `Từ ${formatCurrency(minPrice * 25000)}`
+                : formatCurrency(minPrice * 25000)}
             </p>
             {hasDiscount && (
               <p className="text-xs text-primary/30 line-through font-medium">
-                {formatCurrency(Number(product.originalPrice))}
+                {formatCurrency(Number(product.originalPrice) * 25000)}
               </p>
             )}
           </div>

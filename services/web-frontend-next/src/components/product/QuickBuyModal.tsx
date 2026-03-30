@@ -25,7 +25,6 @@ interface OrderStep {
 export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState<OrderStatus>("idle");
-  const [orderId, setOrderId] = useState<string | null>(null);
   const [orderFinal, setOrderFinal] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [steps, setSteps] = useState<OrderStep[]>([]);
@@ -33,11 +32,9 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [loadingVariants, setLoadingVariants] = useState(false);
 
-  // Lấy variants khi mở modal
   useEffect(() => {
     if (!isOpen || !product?.id) return;
     setStatus("idle");
-    setOrderId(null);
     setOrderFinal(null);
     setErrorMsg("");
     setQuantity(1);
@@ -52,7 +49,6 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
         setVariants(v);
         setSelectedVariant(v[0] || null);
       } catch {
-        // Nếu không fetch được, tạo variant giả từ data ES
         const fakeVariant = { id: product.id, price: product.price, sku: "default" };
         setVariants([fakeVariant]);
         setSelectedVariant(fakeVariant);
@@ -78,7 +74,6 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
     setSteps(stepsInit);
 
     try {
-      // Bước 1: Gửi order
       await new Promise(r => setTimeout(r, 400));
       setSteps(s => s.map((step, i) => i === 0 ? { ...step, done: true, active: false } : i === 1 ? { ...step, active: true } : step));
 
@@ -90,20 +85,15 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
       });
       const data = res.data || res;
       const newOrderId = data.orderId;
-      setOrderId(newOrderId);
 
       setSteps(s => s.map((step, i) => i === 1 ? { ...step, done: true, active: false } : i === 2 ? { ...step, active: true } : step));
       await new Promise(r => setTimeout(r, 300));
       setSteps(s => s.map((step, i) => i === 2 ? { ...step, done: true, active: false } : i === 3 ? { ...step, active: true } : step));
-
       setStatus("polling");
 
-      // Bước 2: Poll status đơn hàng (Indexer xử lý async)
       let attempts = 0;
-      const maxAttempts = 15;
-
       const poll = async (): Promise<void> => {
-        if (attempts >= maxAttempts) {
+        if (attempts >= 15) {
           setSteps(s => s.map((step, i) => i === 3 ? { ...step, done: true, active: false } : i === 4 ? { ...step, active: true, done: true } : step));
           setOrderFinal({ orderId: newOrderId, status: "COMPLETED", totalAmount: data.totalAmount });
           setStatus("success");
@@ -123,7 +113,6 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
         await new Promise(r => setTimeout(r, 1000));
         return poll();
       };
-
       await poll();
 
     } catch (err: any) {
@@ -137,32 +126,39 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
   const price = selectedVariant ? Number(selectedVariant.price) : Number(product?.price ?? 0);
   const stock = Number(product?.stock ?? 0);
 
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-primary/50 backdrop-blur-sm z-[80]"
-          />
+      <>
+        {/* Backdrop */}
+        <motion.div
+          key="backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-primary/60 backdrop-blur-sm z-[80]"
+          onClick={onClose}
+        />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
-
+        {/* Scroll container — overflow-y-auto đảm bảo không tràn màn hình */}
+        <div
+          key="scroll-container"
+          className="fixed inset-0 z-[90] overflow-y-auto"
+          onClick={onClose}
+        >
+          {/* Wrapper căn giữa */}
+          <div className="flex min-h-full items-center justify-center p-4 py-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="w-full max-w-md bg-white rounded-3xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               {/* Header */}
-              <div className="relative bg-primary px-6 py-5">
+              <div className="relative bg-primary px-6 py-5 rounded-t-3xl">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
                     <Zap className="w-5 h-5 text-accent" />
@@ -174,17 +170,18 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
                 </div>
                 <button
                   onClick={onClose}
-                  className="absolute top-4 right-4 w-8 h-8 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                  className="absolute top-4 right-4 w-9 h-9 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-colors"
                 >
-                  <X className="w-4 h-4 text-white" />
+                  <X className="w-5 h-5 text-white" />
                 </button>
               </div>
 
+              {/* Body */}
               <div className="p-6 space-y-5">
                 {/* Product Info */}
                 <div className="flex items-center gap-4 p-4 bg-secondary/30 rounded-2xl">
                   {product?.image && (
-                    <img src={product.image} alt={product.name} className="w-16 h-16 rounded-xl object-cover" />
+                    <img src={product.image} alt={product.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-black text-primary truncate">{product?.name}</p>
@@ -231,16 +228,12 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
                       <button
                         onClick={() => setQuantity(q => Math.max(1, q - 1))}
                         className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center font-bold text-primary hover:bg-accent hover:text-white transition-colors"
-                      >
-                        −
-                      </button>
+                      >−</button>
                       <span className="w-12 text-center text-xl font-black text-primary">{quantity}</span>
                       <button
                         onClick={() => setQuantity(q => Math.min(stock || 99, q + 1))}
                         className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center font-bold text-primary hover:bg-accent hover:text-white transition-colors"
-                      >
-                        +
-                      </button>
+                      >+</button>
                       <div className="ml-auto text-right">
                         <p className="text-[10px] text-primary/40">Tổng cộng</p>
                         <p className="text-lg font-black text-primary">{formatCurrency(price * quantity * 25000)}</p>
@@ -286,7 +279,9 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
                       <p className="font-black text-accent">Đặt hàng thành công!</p>
                     </div>
                     <p className="text-xs text-primary/60 font-mono">Order ID: {orderFinal.id || orderFinal.orderId}</p>
-                    <p className="text-xs text-primary/60">Trạng thái: <span className="font-bold text-accent">{orderFinal.status}</span></p>
+                    <p className="text-xs text-primary/60">
+                      Trạng thái: <span className="font-bold text-accent">{orderFinal.status}</span>
+                    </p>
                     <p className="text-xs text-primary/60">
                       Tổng: <span className="font-bold">{formatCurrency(Number(orderFinal.total_amount || orderFinal.totalAmount) * 25000)}</span>
                     </p>
@@ -307,12 +302,12 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
                   </div>
                 )}
 
-                {/* CTA */}
+                {/* Buttons */}
                 {status === "idle" && (
                   <button
                     onClick={handleOrder}
                     disabled={!selectedVariant || stock === 0}
-                    className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-accent transition-all shadow-lg hover:shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-accent transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <Zap className="w-4 h-4" />
                     {stock === 0 ? "Hết hàng" : "Mua ngay"}
@@ -332,14 +327,23 @@ export default function QuickBuyModal({ product, isOpen, onClose }: QuickBuyModa
                     onClick={onClose}
                     className="w-full py-4 bg-accent text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-accent/90 transition-all"
                   >
-                    Đóng
+                    Đóng ✓
+                  </button>
+                )}
+
+                {status === "error" && (
+                  <button
+                    onClick={() => setStatus("idle")}
+                    className="w-full py-3 border-2 border-primary text-primary rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-primary hover:text-white transition-all"
+                  >
+                    Thử lại
                   </button>
                 )}
               </div>
-            </div>
-          </motion.div>
-        </>
-      )}
+            </motion.div>
+          </div>
+        </div>
+      </>
     </AnimatePresence>
   );
 }
